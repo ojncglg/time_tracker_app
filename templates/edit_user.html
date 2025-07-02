@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+  <!--
+    Template: edit_user.html
+    Purpose: Allow admins to edit user profile fields (call sign, start time, skills, sector).
+    Access: Should be restricted to admin/webmaster via route decorator or middleware.
+  -->
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit User - {{ user.first_name }} {{ user.last_name }}</title>
+    <!-- TODO: Link to shared CSS for form styling -->
+  </head>
+  <body>
+    <!-- Page heading showing which user is being edited -->
+    <h2>Admin Panel – Edit User: {{ user.first_name }} {{ user.last_name }}</h2>
+
+    <!-- Flash messages section: shows confirmation or errors after POST -->
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <ul>
+          {% for msg in messages %}
+            <li><strong>{{ msg }}</strong></li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    <!-- Edit form: submits back to same URL via POST -->
+    <form method="POST">
+      <!-- Call sign field: uppercase enforcement via JS and CSS -->
+      <label for="call_sign">Call Sign:</label>
+      <input
+        type="text"
+        name="call_sign"
+        id="call_sign"
+        value="{{ user.call_sign }}"
+        style="text-transform:uppercase;"
+        oninput="this.value = this.value.toUpperCase();"
+      ><br><br>
+
+      <!-- Start time select: fixed options matching shift schedule possibilities -->
+      <label for="start_time">Start Time:</label>
+      <select name="start_time" id="start_time">
+        {% for time in ['05:00', '06:00', '07:00', '08:00'] %}
+          <option
+            value="{{ time }}"
+            {% if user.start_time == time %}selected{% endif %}
+          >
+            {{ time }}
+          </option>
+        {% endfor %}
+      </select><br><br>
+
+      <!-- Skills input: comma-separated list parsed server-side -->
+      <label for="skills">Skills (comma-separated):</label>
+      <input
+        type="text"
+        name="skills"
+        id="skills"
+        value="{{ user.skills | join(', ') }}"
+      ><br><br>
+
+      <!-- Sector field: free text for department or division -->
+      <label for="sector">Sector:</label>
+      <input
+        type="text"
+        name="sector"
+        id="sector"
+        value="{{ user.sector }}"
+      ><br><br>
+
+      <!-- Submit button to save changes -->
+      <input type="submit" value="Save Changes">
+    </form>
+
+    <!-- Link back to dashboard for navigation -->
+    <br>
+    <a href="/landing">&larr; Back to Dashboard</a>
+  </body>
+</html>

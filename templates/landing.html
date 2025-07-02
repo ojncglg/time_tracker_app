@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <!--
+    Template: landing.html
+    Purpose: User dashboard showing personalized options based on role.
+    Displays basic user info and navigation links for core features.
+  -->
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <!-- TODO: Include a shared CSS file for consistent dashboard styling -->
+  </head>
+
+  <body>
+    <!-- Greeting with user's rank and last name for personalization -->
+    <h2>Welcome {{ user.rank }} {{ user.last_name }}</h2>
+
+    <!-- Display key user attributes -->
+    <p>Call Sign: {{ user.call_sign }}</p>
+    <p>Squad: {{ user.squad }}</p>
+
+    <!-- Main navigation list for user actions -->
+    <ul>
+      <!-- Link to request time off form -->
+      <li><a href="/request-time-off">Request Time Off</a></li>
+      <!-- Link to view the monthly shift calendar -->
+      <li><a href="/calendar">View Calendar</a></li>
+      <!-- Link to edit own profile (admins can edit any user via admin links) -->
+      <li><a href="/admin/edit-user/{{ user.username }}">Edit Profile</a></li>
+
+      <!-- Additional admin/webmaster links: only render for those roles -->
+      {% if user.role == "webmaster" %}
+        <hr />
+        <!-- Approve or deny pending requests -->
+        <li><a href="/admin/requests">Pending Requests</a></li>
+        <!-- View full vacation request history -->
+        <li><a href="/admin/history">Vacation History</a></li>
+        <!-- Placeholder for user management page -->
+        <li><a href="/admin/users">Manage Users</a></li>
+      {% endif %}
+    </ul>
+
+    <!-- Logout link to clear session and return to login page -->
+    <br />
+    <a href="/logout">Logout</a>
+  </body>
+</html>

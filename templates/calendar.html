@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+  <!--
+    Template: calendar.html
+    Purpose: Display a monthly patrol shift calendar grid.
+    Shows each day with clickable links to detailed daily view and shift assignments per squad.
+  -->
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shift Calendar – Patrol</title>
+    <!-- TODO: Include CSS for calendar styling (e.g., fixed cell sizes, hover effects) -->
+  </head>
+  <body>
+    <!-- Heading displays current month and year passed from view -->
+    <h2>Patrol Shift Calendar – {{ month }}/{{ year }}</h2>
+
+    <!-- Calendar grid table -->
+    <table border="1" cellspacing="0" cellpadding="4">
+      <!-- Weekday headers -->
+      <thead>
+        <tr>
+          <th>Sun</th>
+          <th>Mon</th>
+          <th>Tue</th>
+          <th>Wed</th>
+          <th>Thu</th>
+          <th>Fri</th>
+          <th>Sat</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Iterate in 7-day chunks to form each week row -->
+        {% for week in range(0, cells|length, 7) %}
+        <tr>
+          <!-- Loop through each day cell in the week -->
+          {% for day in cells[week:week+7] %}
+            {% if day %}
+              <td>
+                <!-- Link the day number to its detailed view -->
+                <a href="/calendar/{{ day.date }}">
+                  <strong>{{ day.date.split('-')[-1] }}</strong>
+                </a>
+                <br />
+                <!-- List non-off shifts for each squad on this day -->
+                {% for squad, shift in day.shifts.items() %}
+                  {% if shift != 'Off' %}
+                    {{ squad }} – {{ shift }}<br />
+                  {% endif %}
+                {% endfor %}
+              </td>
+            {% else %}
+              <!-- Empty cell for days outside the current month -->
+              <td></td>
+            {% endif %}
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Navigation link back to dashboard -->
+    <br />
+    <a href="/landing">&larr; Back to Dashboard</a>
+  </body>
+</html>

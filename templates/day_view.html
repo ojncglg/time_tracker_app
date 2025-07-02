@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <!--
+    Template: day_view.html
+    Purpose: Show detailed shift schedule and status per squad for a specific date.
+    Accessible from calendar daily links; provides links to edit user profiles.
+  -->
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Schedule for {{ date }}</title>
+    <!-- TODO: Add CSS for list styling and responsive layout -->
+  </head>
+  <body>
+    <!-- Main heading with the selected date -->
+    <h2>Schedule for {{ date }}</h2>
+
+    <!-- Loop through each squad and its members for the day -->
+    {% for squad, members in roster.items() %}
+    <!-- Squad header showing shift type (Day/Night/Off) -->
+    <h3>{{ squad }} Squad – {{ day_shifts[squad] }} Shift</h3>
+    <ul>
+      {% for user in members %}
+      <li>
+        <!-- Link to edit user profile in admin panel -->
+        <a href="/admin/edit-user/{{ user.username }}">
+          {{ user.rank }} {{ user.last_name }} ({{ user.call_sign }})
+        </a>
+        <br />
+
+        <!-- Display user details: squad, shift type, and times -->
+        Squad: {{ user.squad }}<br />
+        Shift Type: {{ user.shift_type }}<br />
+        Start Time: {{ user.start_time }}<br />
+        End Time: {{ user.end_time }}<br />
+
+        <!-- List user skills and current status -->
+        Skills: {{ user.skills | join(", ") }}<br />
+        Status: {{ user.status }}<br />
+      </li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+
+    <!-- Navigation link back to the monthly calendar view -->
+    <br />
+    <a href="/calendar">&larr; Back to Calendar</a>
+  </body>
+</html>

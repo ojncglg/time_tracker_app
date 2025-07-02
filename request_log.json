@@ -1,0 +1,57 @@
+[
+    {
+        "user": "0000",
+        "name": "Grigori LopezGarcia",
+        "call_sign": "W-1",
+        "sector": "Command",
+        "date": "2025-06-15",
+        "hours": 11.25,
+        "status": "approved",
+        "handled_by": "0000",
+        "timestamp": "2025-06-15 07:30:15"
+    },
+    {
+        "user": "0000",
+        "name": "Grigori LopezGarcia",
+        "call_sign": "W-1",
+        "sector": "Command",
+        "date": "2025-06-16",
+        "hours": 11.25,
+        "status": "approved",
+        "handled_by": "LopezGarcia (Webmaster)",
+        "timestamp": "2025-06-15 07:49:13"
+    },
+    {
+        "user": "0000",
+        "name": "Grigori LopezGarcia",
+        "call_sign": "W-1",
+        "sector": "Command",
+        "date": "2025-06-15",
+        "hours": 11.25,
+        "status": "approved",
+        "handled_by": "LopezGarcia (Webmaster)",
+        "timestamp": "2025-06-15 12:58:54"
+    },
+    {
+        "user": "0000",
+        "name": "Grigori LopezGarcia",
+        "call_sign": "W-1",
+        "sector": "Command",
+        "date": "2025-06-17",
+        "hours": 11.25,
+        "status": "approved",
+        "handled_by": "LopezGarcia (Webmaster)",
+        "timestamp": "2025-06-16 12:29:19"
+    },
+    {
+        "user": "2886",
+        "name": "Grigori Lopez-Garcia",
+        "call_sign": "34A1",
+        "sector": "Patrol",
+        "date": "2025-07-01",
+        "hours": 11.25,
+        "status": "approved",
+        "handled_by": "Lopez-Garcia (Senior Corporal)",
+        "timestamp": "2025-07-01 23:51:37"
+    }
+]

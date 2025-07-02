@@ -1,0 +1,11 @@
+# Ignore Python virtualenv
+venv/
+
+# Ignore pycache
+__pycache__/
+
+# Ignore backups
+*.tar.gz
+
+# Ignore system files
+.DS_Store

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+  <!--
+    Template: admin_history.html
+    Purpose: Display a table of all processed time-off requests for admin audit.
+    Accessible only to users with 'admin' or 'webmaster' roles.
+  -->
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vacation Request History</title>
+    <!-- Consider adding CSS link here for consistent styling -->
+  </head>
+  <body>
+    <!-- Main heading for the history page -->
+    <h2>Vacation Request History</h2>
+
+    <!-- Table showing each request log entry -->
+    <table border="1" cellspacing="0" cellpadding="4">
+      <!-- Table header section -->
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Call Sign</th>
+          <th>Sector</th>
+          <th>Date</th>
+          <th>Hours</th>
+          <th>Status</th>
+          <th>Decision</th>
+          <th>Handled By</th>
+          <th>Timestamp</th>
+        </tr>
+      </thead>
+
+      <!-- Table body: loop over request_log entries passed from view -->
+      <tbody>
+        {% for log in request_log %}
+        <tr>
+          <!-- Display user's name -->
+          <td>{{ log.name }}</td>
+
+          <!-- Display user's call sign for quick identification -->
+          <td>{{ log.call_sign }}</td>
+
+          <!-- Display department sector -->
+          <td>{{ log.sector }}</td>
+
+          <!-- Date of the request -->
+          <td>{{ log.date }}</td>
+
+          <!-- Number of hours approved or logged -->
+          <td>{{ log.hours }}</td>
+
+          <!-- Raw status value for clarity -->
+          <td>{{ log.status }}</td>
+
+          <!-- Iconic decision column based on status -->
+          <td>
+            {% if log.status == 'approved' %}
+            <!-- Approved requests get a green checkmark -->
+            ✅ Approved {% elif log.status == 'denied' %}
+            <!-- Denied requests get a red cross -->
+            ❌ Denied {% else %}
+            <!-- Pending requests show a clock icon -->
+            ⏳ Pending {% endif %}
+          </td>
+
+          <!-- Admin username or display name who handled the request -->
+          <td>{{ log.handled_by }}</td>
+
+          <!-- Timestamp of when the request was processed -->
+          <td>{{ log.timestamp }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Navigation link back to the main dashboard -->
+    <br />
+    <a href="/landing">&larr; Back to Dashboard</a>
+  </body>
+</html>

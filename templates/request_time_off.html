@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+  <!--
+    Template: request_time_off.html
+    Purpose: Provide a form for users to submit time-off requests (vacation or sick leave).
+    Accessible only to authenticated users; posts to '/submit-request' route via POST.
+  -->
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Request Time Off</title>
+    <!-- TODO: Add CSS for form layout and mobile responsiveness -->
+  </head>
+  <body>
+    <!-- Page header -->
+    <h2>Request Time Off</h2>
+
+    <!-- Time-off request form -->
+    <form action="/submit-request" method="POST">
+      <!-- Date picker for the requested day -->
+      <label for="date">Date:</label>
+      <input type="date" name="date" id="date" required />
+      <br /><br />
+
+      <!-- Dropdown to choose vacation or sick leave -->
+      <label for="type">Type:</label>
+      <select name="type" id="type" required>
+        <option value="vacation">Vacation</option>
+        <option value="sick">Sick</option>
+      </select>
+      <br /><br />
+
+      <!-- Number input for hours requested (increments of 0.25) -->
+      <label for="hours">Hours:</label>
+      <input
+        type="number"
+        name="hours"
+        id="hours"
+        step="0.25"
+        min="1"
+        max="24"
+        required
+      />
+      <br /><br />
+
+      <!-- Optional note field for additional context -->
+      <label for="note">Note (optional):</label><br />
+      <textarea name="note" id="note" rows="4" cols="50"></textarea>
+      <br /><br />
+
+      <!-- Submit button to send request to server -->
+      <input type="submit" value="Submit Request" />
+    </form>
+
+    <!-- Navigation link back to user dashboard -->
+    <br />
+    <a href="/landing">&larr; Back to Dashboard</a>
+  </body>
+</html>

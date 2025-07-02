@@ -1,0 +1,37 @@
+<!--
+  Template: login.html
+  Purpose: Render a simple user login form for authentication.
+  Accessible publicly; posts credentials to /login route (handles GET+POST).
+-->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login</title>
+    <!-- TODO: Link to site-wide CSS for consistent form styling -->
+  </head>
+  <body>
+    <!-- Page heading for login -->
+    <h2>Login</h2>
+
+    <!-- Login form: submits username and password via POST to /login -->
+    <form action="/login" method="POST">
+      <!-- Username field -->
+      <label for="username">Username:</label><br />
+      <input type="text" id="username" name="username" required /><br /><br />
+
+      <!-- Password field -->
+      <label for="password">Password:</label><br />
+      <input
+        type="password"
+        id="password"
+        name="password"
+        required
+      /><br /><br />
+
+      <!-- Submit button -->
+      <input type="submit" value="Login" />
+    </form>
+  </body>
+</html>
