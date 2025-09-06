@@ -1,81 +1,417 @@
 <!DOCTYPE html>
+<!--
+  Template: edit_user.html
+  Purpose: Admin-only, single-user editor with archive/unarchive, secure password reset,
+           vacation & sick balance adjustments (audited), and full profile fields.
+  Access: Protected by @require_role('admin','webmaster') at the route level.
+  Data contract (from Flask view):
+    - username (str): user identifier for page context and form posts.
+    - user (dict): current user record; includes is_active, balances, audit, etc.
+    - roles (list[str]): selectable roles for the profile form.
+    - user_choices (list[{username:str,label:str}]): list for the Switch Officer selector.
+  Notes:
+    - All state-changing forms must include {{ csrf_token() }} in a hidden _csrf input.
+    - Keep business logic in Python; Jinja here only renders data and simple branches.
+-->
 <html lang="en">
-  <!--
-    Template: edit_user.html
-    Purpose: Allow admins to edit user profile fields (call sign, start time, skills, sector).
-    Access: Should be restricted to admin/webmaster via route decorator or middleware.
-  -->
   <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Edit User - {{ user.first_name }} {{ user.last_name }}</title>
-    <!-- TODO: Link to shared CSS for form styling -->
+    <!-- Document metadata for encoding -->
+    <meta charset="UTF-8" />
+    <title>Edit User — {{ username }}</title>
+    <!-- Viewport meta for mobile responsiveness -->
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Tailwind CSS via CDN (kept consistent with global design) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Local stylesheet for shared components and dark theme helpers -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   </head>
-  <body>
-    <!-- Page heading showing which user is being edited -->
-    <h2>Admin Panel – Edit User: {{ user.first_name }} {{ user.last_name }}</h2>
 
-    <!-- Flash messages section: shows confirmation or errors after POST -->
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        <ul>
-          {% for msg in messages %}
-            <li><strong>{{ msg }}</strong></li>
-          {% endfor %}
-        </ul>
-      {% endif %}
-    {% endwith %}
+  <body class="theme-dark min-h-screen"><!-- Dark theme baseline + min full viewport height -->
+    <div class="max-w-5xl mx-auto px-4 py-8 animate-fade-in">
+      <!-- Flash toasts: success/error/info messages surfaced from Flask -->
+      {% include '_toasts.html' %}
 
-    <!-- Edit form: submits back to same URL via POST -->
-    <form method="POST">
-      <!-- Call sign field: uppercase enforcement via JS and CSS -->
-      <label for="call_sign">Call Sign:</label>
-      <input
-        type="text"
-        name="call_sign"
-        id="call_sign"
-        value="{{ user.call_sign }}"
-        style="text-transform:uppercase;"
-        oninput="this.value = this.value.toUpperCase();"
-      ><br><br>
+      <!-- Page header: title, active/archive badge, and primary actions -->
+      <div class="flex items-center justify-between mb-6">
+        <h1 class="text-3xl font-bold text-indigo-600 dark:text-indigo-300">
+          Edit User <span class="text-gray-500 dark:text-gray-400">({{ username }})</span>
+          <!-- Badge: show current activation state of the user -->
+          {% if user.get('is_active', True) %}
+            <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800 align-middle">Active</span>
+          {% else %}
+            <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-200 text-gray-800 align-middle">Archived</span>
+          {% endif %}
+        </h1>
+        <div class="flex items-center gap-2">
+          <!-- Create user: navigates to dedicated create-user flow -->
+          <a href="/admin/create-user"
+             class="btn btn--warn text-black hover:text-black"
+             aria-label="Create User">
+            + Create User
+          </a>
+          <!-- Archive/Unarchive action (POST + confirm) -->
+          {% if user.get('is_active', True) %}
+            <!-- Archive/Unarchive action (POST + confirm) -->
+            <form action="{{ url_for('archive_user') }}" method="POST"
+                  onsubmit="return confirm('Archive this user? This will clear call sign, mark rank \"Archived\", and zero leave balances. Proceed?');">
+              <input type="hidden" name="username" value="{{ username }}" />
+              <input type="hidden" name="_csrf" value="{{ csrf_token() }}" /><!-- CSRF protection -->
+              <button type="submit"
+                      class="btn btn--danger"
+                      aria-label="Archive User" title="Archive User">
+                − Archive
+              </button>
+            </form>
+          {% else %}
+            <!-- Archive/Unarchive action (POST + confirm) -->
+            <form action="{{ url_for('unarchive_user') }}" method="POST"
+                  onsubmit="return confirm('Unarchive this user?');">
+              <input type="hidden" name="username" value="{{ username }}" />
+              <input type="hidden" name="_csrf" value="{{ csrf_token() }}" /><!-- CSRF protection -->
+              <button type="submit"
+                      class="btn btn--success"
+                      aria-label="Unarchive User" title="Unarchive User">
+                ⤴ Unarchive
+              </button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
 
-      <!-- Start time select: fixed options matching shift schedule possibilities -->
-      <label for="start_time">Start Time:</label>
-      <select name="start_time" id="start_time">
-        {% for time in ['05:00', '06:00', '07:00', '08:00'] %}
-          <option
-            value="{{ time }}"
-            {% if user.start_time == time %}selected{% endif %}
-          >
-            {{ time }}
-          </option>
-        {% endfor %}
-      </select><br><br>
+      <!-- Switch Officer: jump to another user's editor (does not auto-save current edits) -->
+      <div class="mb-6 card card--loose bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+        <h3 class="text-base font-semibold text-gray-800 dark:text-gray-100 mb-3">
+          Switch Officer
+        </h3>
 
-      <!-- Skills input: comma-separated list parsed server-side -->
-      <label for="skills">Skills (comma-separated):</label>
-      <input
-        type="text"
-        name="skills"
-        id="skills"
-        value="{{ user.skills | join(', ') }}"
-      ><br><br>
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-end gap-3">
+          <label class="block w-full sm:flex-1">
+            <span class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Officer</span>
+            <select id="jump-user" class="w-full border border-gray-300 dark:border-gray-600 rounded-md p-2 dark:bg-gray-700 dark:text-gray-100"><!-- Populated from user_choices passed by the view -->
+              {% for opt in user_choices %}
+                <option value="{{ opt.username }}" {% if opt.username == username %}selected{% endif %}>
+                  {{ opt.label }}
+                </option>
+              {% endfor %}
+            </select>
+          </label>
 
-      <!-- Sector field: free text for department or division -->
-      <label for="sector">Sector:</label>
-      <input
-        type="text"
-        name="sector"
-        id="sector"
-        value="{{ user.sector }}"
-      ><br><br>
+          <!-- Manual 'Go' button (also auto-jumps on change) -->
+          <button id="jump-btn"
+                  class="btn btn--warn">
+            Go
+          </button>
+        </div>
 
-      <!-- Submit button to save changes -->
-      <input type="submit" value="Save Changes">
-    </form>
+        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          Pick an officer to jump to their profile. Changes on this page are not auto-saved—make sure to save before switching.
+        </p>
+      </div>
 
-    <!-- Link back to dashboard for navigation -->
-    <br>
-    <a href="/landing">&larr; Back to Dashboard</a>
+      <script>
+        // JS: lightweight, inline navigation to selected user's edit page
+        (function () {
+          const sel = document.getElementById("jump-user");
+          const btn = document.getElementById("jump-btn");
+          if (!sel || !btn) return;
+
+          // Build target URL by replacing placeholder with selected username
+          function go() {
+            const u = sel.value;
+            if (!u) return;
+            const base = "{{ url_for('edit_user', username='__PLACEHOLDER__') }}";
+            const href = base.replace("__PLACEHOLDER__", encodeURIComponent(u));
+            window.location.href = href;
+          }
+
+          // Auto-jump on selection change
+          sel.addEventListener("change", go);
+          // Also support explicit button click
+          btn.addEventListener("click", go);
+        })();
+      </script>
+
+      <!-- Quick actions: audited vacation and sick balance adjustments -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        <!-- Vacation Adjustment card -->
+        <!-- POST: adjust_vacation (audited). Status/role checks enforced server-side. -->
+        <div class="card card--loose bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+          <h2 class="text-lg font-semibold mb-2 text-gray-800 dark:text-gray-200">Adjust Vacation Balance</h2>
+          <p class="text-sm muted mb-3">
+            Current: <span class="font-semibold text-indigo-600 dark:text-indigo-300">{{ '%.2f' % (user.get('vacation_left', 0) or 0) }} hrs</span>
+          </p>
+          <form action="{{ url_for('adjust_vacation') }}" method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <input type="hidden" name="username" value="{{ username }}" />
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}" /><!-- CSRF protection -->
+            <!-- Choose direction: Add/Subtract -->
+            <select name="direction"
+                    class="border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200">
+              <option value="add">Add</option>
+              <option value="subtract">Subtract</option>
+            </select>
+            <!-- Hours: quarter-hour increments; required -->
+            <input type="number" name="hours" step="0.25" min="0.25" placeholder="Hours"
+                   class="border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200" required />
+            <!-- Optional audit note; stored with the adjustment -->
+            <input type="text" name="note" placeholder="Note (optional, for audit)"
+                   class="md:col-span-2 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200" />
+            <div class="md:col-span-4">
+              <!-- Submit: triggers server-side audit entry -->
+              <button type="submit"
+                      class="btn btn--primary">
+                Update Balance
+              </button>
+            </div>
+          </form>
+          <p class="text-xs mt-3 muted">
+            All adjustments are recorded in the user’s audit trail.
+          </p>
+        </div>
+
+        <!-- Sick Balance Adjustment card -->
+        <!-- POST: adjust_sick (audited). Only affects Sick Left; Used YTD is informational. -->
+        <div class="card card--loose bg-white dark:bg-gray-800 rounded-lg shadow p-4">
+          <h2 class="text-lg font-semibold mb-2 text-gray-800 dark:text-gray-200">Adjust Sick Time Balance</h2>
+          <div class="text-sm text-gray-600 dark:text-gray-300 mb-3">
+            <div>Current Sick Left:
+              <span class="font-semibold">{{ '%.2f' % (user.sick_left or 0) }} hrs</span>
+            </div>
+            <div>Used YTD (info only):
+              <span class="font-semibold">{{ '%.2f' % (user.sick_used_ytd or 0) }} hrs</span>
+            </div>
+          </div>
+          <form action="{{ url_for('adjust_sick') }}" method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <input type="hidden" name="username" value="{{ username }}" />
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}" /><!-- CSRF protection -->
+            <!-- Operation: Add/Subtract -->
+            <select name="op" class="border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200">
+              <option value="add">Add</option>
+              <option value="subtract">Subtract</option>
+            </select>
+            <!-- Hours delta; non-negative; required -->
+            <input type="number" name="delta" step="0.25" min="0" required placeholder="Hours"
+                   class="border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200" />
+            <!-- Required audit note for sick adjustments -->
+            <input type="text" name="note" required placeholder="Note (required, for audit)"
+                   class="md:col-span-2 border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200" />
+            <div class="md:col-span-4">
+              <!-- Submit: applies Sick Left change and writes to audit -->
+              <button type="submit" class="btn btn--primary">
+                Apply Sick Adjustment
+              </button>
+            </div>
+          </form>
+          <p class="text-xs mt-3 muted">
+            This updates <em>Sick Left</em> only. It does not change <em>Sick Used YTD</em>. All actions are logged in the user’s audit trail.
+          </p>
+        </div>
+      </div>
+
+        <!-- Set/Reset Password: secure write to /admin/set-password; hashes server-side -->
+        <div id="set-password" class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-6">
+          <h2 class="text-lg font-semibold mb-2 text-gray-800 dark:text-gray-200">Set/Reset Password</h2>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
+            Set a new password for <span class="font-semibold">{{ username }}</span>. The password is securely hashed; no plaintext is stored.
+          </p>
+          <form action="/admin/set-password" method="POST" class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <input type="hidden" name="username" value="{{ username }}" />
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}" /><!-- CSRF protection -->
+
+            <div>
+              <!-- New password field -->
+              <label class="block text-sm mb-1">New Password</label>
+              <input name="password"
+                     type="password"
+                     required
+                     minlength="8"
+                     autocomplete="new-password"
+                     placeholder="At least 8 characters"
+                     class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200" />
+            </div>
+
+            <div>
+              <!-- Confirm new password field -->
+              <label class="block text-sm mb-1">Confirm New Password</label>
+              <input name="password2"
+                     type="password"
+                     required
+                     minlength="8"
+                     autocomplete="new-password"
+                     placeholder="Repeat password"
+                     class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200" />
+            </div>
+
+            <div class="flex items-end">
+              <!-- Submit: updates password hash for target username -->
+              <button type="submit"
+                      class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-md shadow w-full md:w-auto">
+                Update Password
+              </button>
+            </div>
+          </form>
+          <p class="text-xs mt-3 text-gray-500 dark:text-gray-400">
+            Tip: Use a mix of letters, numbers, and symbols. Changes are audited under the actor making this update.
+          </p>
+        </div>
+      <!-- Full Profile form: standard fields; leave balances edited via cards above -->
+      <form method="POST" class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}" /><!-- CSRF protection -->
+        <h2 class="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-200">Profile</h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Basic identity fields -->
+          <div>
+            <label class="block text-sm mb-1">First Name</label>
+            <input name="first_name" value="{{ user.first_name or '' }}" class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200" />
+          </div>
+          <div>
+            <label class="block text-sm mb-1">Last Name</label>
+            <input name="last_name" value="{{ user.last_name or '' }}" class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200" />
+          </div>
+
+          <!-- Assignment fields -->
+          <div>
+            <label class="block text-sm mb-1">Rank</label>
+            <input name="rank" value="{{ user.rank or '' }}" class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200" />
+          </div>
+          <div>
+            <label class="block text-sm mb-1">Squad</label>
+            <select name="squad" class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200">
+              {% for s in ['', 'A','B','C','D'] %}
+                <option value="{{ s }}" {% if user.squad==s %}selected{% endif %}>{{ s or 'None' }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Contact/ops fields -->
+          <div>
+            <label class="block text-sm mb-1">Call Sign</label>
+            <input name="call_sign" value="{{ user.call_sign or '' }}" class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200" />
+          </div>
+          <div>
+            <label class="block text-sm mb-1">Sector</label>
+            <input name="sector" value="{{ user.sector or '' }}" class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200" />
+          </div>
+
+          <!-- Skills and defaults -->
+          <div>
+            <label class="block text-sm mb-1">Skills (comma-separated)</label>
+            <input name="skills" value="{{ (user.skills or [])|join(', ') }}" class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200" />
+          </div>
+          <div>
+            <label class="block text-sm mb-1">Start Time (HH:MM)</label>
+            <input name="start_time" value="{{ user.start_time or '07:00' }}" placeholder="07:00" class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200" />
+          </div>
+
+          <!-- Role selection and password placeholder (managed above) -->
+          <div>
+            <label class="block text-sm mb-1">Role</label>
+            <select name="role" class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200">
+              {% for r in roles %}
+                <option value="{{ r }}" {% if user.role==r %}selected{% endif %}>{{ r }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm mb-1">Password (managed above)</label>
+            <input type="password" value="••••••••" disabled class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200 opacity-70" />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Password cannot be edited here. Use the <a href="#set-password" class="text-indigo-600 dark:text-indigo-300 underline">Set/Reset Password</a> section above.</p>
+          </div>
+
+          <!-- NCCPD additions and future-friendly fields -->
+          <div>
+            <label class="block text-sm mb-1">Seniority Date</label>
+            <input name="seniority_date" type="date" value="{{ user.seniority_date or '' }}" class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200" />
+          </div>
+          <div>
+            <label class="block text-sm mb-1">Hours/Day Default</label>
+            <input name="hours_per_day_default" type="number" step="0.25" value="{{ user.hours_per_day_default or 8.0 }}" class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200" />
+          </div>
+
+          <div>
+            <label class="block text-sm mb-1">Agency</label>
+            <input name="agency" value="{{ user.agency or '' }}" placeholder="e.g., NCCPD" class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200" />
+          </div>
+          <div>
+            <label class="block text-sm mb-1">Vacation Accrual Rate (placeholder)</label>
+            <input name="vacation_accrual_rate" type="number" step="0.01" value="{{ user.vacation_accrual_rate or 0 }}" class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200" />
+          </div>
+
+          <div class="md:col-span-2">
+            <label class="block text-sm mb-1">Carryover Caps (placeholder text or JSON)</label>
+            <input name="carryover_caps" value="{{ user.carryover_caps or '' }}" placeholder='e.g., {"max":560,"thresholds":[240,560]}'
+                   class="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 dark:bg-gray-700 dark:text-gray-200" />
+          </div>
+
+          <!-- Balances (editable) -->
+          <!-- (Removed redundant bottom balance fields; adjustments handled above.) -->
+
+        </div>
+
+        <!-- Primary actions for profile form -->
+        <div class="mt-6">
+          <button type="submit"
+                  class="btn btn--primary">
+            Save Changes
+          </button>
+          <a href="{{ url_for('landing') }}"
+             class="btn btn--primary ml-3 text-black hover:text-black">
+            ← Back to Dashboard
+          </a>
+        </div>
+      </form>
+
+      <!-- Audit Trail: historical actions with actor, action, and JSON details -->
+      <details class="mt-8 card card--loose bg-white dark:bg-gray-800 rounded-lg shadow">
+        <summary class="cursor-pointer px-4 py-3 text-gray-800 dark:text-gray-200 font-semibold">
+          Audit Trail ({{ (user.audit or [])|length if user.audit else 0 }})
+        </summary>
+        <div class="px-4 py-3 muted">
+          {% if user.audit %}
+            <div class="overflow-x-auto">
+              <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead class="bg-gray-50 dark:bg-gray-700">
+                  <tr>
+                    <th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider">Timestamp</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider">Actor</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider">Action</th>
+                    <th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider">Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <!-- Snapshot entries to avoid repeated lookups in loop -->
+                  {% set entries = user.audit or [] %}
+                  {% if entries %}
+                    {% for a in entries %}
+                      <tr class="border-b dark:border-gray-700">
+                        <td class="px-3 py-2 text-xs">{{ a.ts or "-" }}</td>
+                        <td class="px-3 py-2 text-xs">{{ a.actor or "-" }}</td>
+                        <td class="px-3 py-2 text-xs">{{ a.action or "-" }}</td>
+                        <!-- Render details as JSON for readability; default to {} to remain serializable -->
+                        <td class="px-3 py-2 text-xs whitespace-pre-wrap">
+                          <pre class="whitespace-pre-wrap text-xs leading-snug">
+{{ (a.details | default({})) | tojson(indent=2) }}
+                          </pre>
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  {% else %}
+                    <tr>
+                      <td colspan="4" class="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                        No audit entries yet.
+                      </td>
+                    </tr>
+                  {% endif %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="text-sm text-gray-600 dark:text-gray-400">No audit entries yet.</p>
+          {% endif %}
+        </div>
+      </details>
+
+    </div>
+    <!-- End of edit_user.html -->
   </body>
 </html>

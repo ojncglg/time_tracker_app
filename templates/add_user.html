@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<!--
+  Template: add_user.html
+  Purpose: Form to create a new user record with core attributes, credentials, and balances.
+  Access: Restricted to webmaster/admin roles via Flask route protection.
+  Data contract (from Flask view):
+    - squads (list[str]): squad names for dropdown.
+    - roles (list[str]): role names for dropdown.
+  Notes:
+    - All state-changing forms should include CSRF tokens (ensure Flask injects {{ csrf_token() }}).
+    - Values like vacation/sick balances initialize new accounts.
+-->
+<html>
+  <head>
+    <!-- Document title -->
+    <title>Add User</title>
+  </head>
+  <body>
+    <!-- Page body -->
+    <!-- Page heading -->
+    <h2>Add User</h2>
+    <!-- Form: POST to server to create new user -->
+    <form method="POST">
+      {{ csrf_token() }}
+      <!-- Required unique username -->
+      <label>Username*</label>
+      <input name="username" required /><!-- required -->
+
+      <!-- Basic identity fields -->
+      <label>First name</label>
+      <input name="first_name" />
+
+      <label>Last name</label>
+      <input name="last_name" />
+
+      <!-- Rank/Squad -->
+      <label>Rank</label>
+      <input name="rank" />
+
+      <label>Squad</label>
+      <select name="squad">
+        {% for s in squads %}
+        <option value="{{ s }}">{{ s or 'None' }}</option>
+        {% endfor %}
+      </select>
+
+      <!-- Call sign/Sector/Skills -->
+      <label>Call sign</label>
+      <input name="call_sign" />
+
+      <label>Sector</label>
+      <input name="sector" />
+
+      <label>Skills (comma-separated)</label>
+      <input name="skills" placeholder="K9, SWAT" />
+
+      <!-- Default shift start time -->
+      <label>Start time (HH:MM)</label>
+      <input name="start_time" value="07:00" /><!-- default 07:00 -->
+
+      <!-- System role (user/admin/webmaster/etc.) -->
+      <label>Role</label>
+      <select name="role">
+        {% for r in roles %}
+        <option value="{{ r }}">{{ r }}</option>
+        {% endfor %}
+      </select>
+
+      <!-- Initial password (stored hashed server-side) -->
+      <label>Password</label>
+      <input name="password" type="password" />
+
+      <!-- Vacation balances -->
+      <label>Vacation left</label>
+      <input
+        name="vacation_left"
+        type="number"
+        step="0.25"
+        value="0"
+      /><!-- number with quarter-hour precision -->
+
+      <label>Vacation used today</label>
+      <input
+        name="vacation_used_today"
+        type="number"
+        step="0.25"
+        value="0"
+      /><!-- number with quarter-hour precision -->
+
+      <!-- Sick balances -->
+      <label>Sick left</label>
+      <input
+        name="sick_left"
+        type="number"
+        step="0.25"
+        value="0"
+      /><!-- number with quarter-hour precision -->
+
+      <label>Sick used YTD</label>
+      <input
+        name="sick_used_ytd"
+        type="number"
+        step="0.25"
+        value="0"
+      /><!-- number with quarter-hour precision -->
+
+      <!-- Activation status dropdown -->
+      <label>Active?</label>
+      <select name="is_active">
+        <option value="true" selected>Yes</option>
+        <option value="false">No</option>
+      </select>
+
+      <!-- Submit button: creates user -->
+      <button type="submit">Create</button>
+    </form>
+
+    <!-- Navigation link back to Manage Users -->
+    <p><a href="{{ url_for('manage_users') }}">Back</a></p>
+    <!-- End of add_user.html -->
+  </body>
+</html>

@@ -1,48 +1,219 @@
 <!DOCTYPE html>
+<!--
+  Template: landing.html
+  Purpose: Dashboard landing page for all authenticated users.
+  Data contract:
+    - user (dict-like): contains rank, last_name, call_sign, squad.
+    - session.role: string indicating current session role ("user", "admin", "webmaster").
+  Notes:
+    - Unified toasts partial is included at the top.
+    - Navigation is role-aware: admin-only links rendered only if role ∈ {admin, webmaster}.
+    - Uses Tailwind CSS and local style.css.
+-->
 <html lang="en">
-  <!--
-    Template: landing.html
-    Purpose: User dashboard showing personalized options based on role.
-    Displays basic user info and navigation links for core features.
-  -->
   <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Basic meta tags for encoding & viewport -->
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dashboard</title>
-    <!-- TODO: Include a shared CSS file for consistent dashboard styling -->
+    <!-- Tailwind via CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Local stylesheet for shared components & dark mode -->
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
   </head>
 
-  <body>
-    <!-- Greeting with user's rank and last name for personalization -->
-    <h2>Welcome {{ user.rank }} {{ user.last_name }}</h2>
+  <body
+    class="theme-dark min-h-screen"
+    <!--
+    Dark
+    theme
+    baseline;
+    body
+    stretches
+    full
+    viewport
+    height
+    --
+  >
+    >
+    <!-- Main container -->
+    <div class="max-w-5xl mx-auto px-4 py-12 animate-fade-in">
+      <!-- Toast notifications for feedback (success/error/info) -->
+      {# Unified toasts #} {% include '_toasts.html' %}
 
-    <!-- Display key user attributes -->
-    <p>Call Sign: {{ user.call_sign }}</p>
-    <p>Squad: {{ user.squad }}</p>
+      <!-- Greeting: personalized welcome using user context -->
+      <!-- Greeting -->
+      <header class="text-center mb-8">
+        <h2 class="text-4xl font-bold tracking-tight">
+          Welcome {{ user.rank }} {{ user.last_name }}
+        </h2>
+        <p class="mt-2 text-sm muted">Stay organized. Quick actions below.</p>
+      </header>
 
-    <!-- Main navigation list for user actions -->
-    <ul>
-      <!-- Link to request time off form -->
-      <li><a href="/request-time-off">Request Time Off</a></li>
-      <!-- Link to view the monthly shift calendar -->
-      <li><a href="/calendar">View Calendar</a></li>
-      <!-- Link to edit own profile (admins can edit any user via admin links) -->
-      <li><a href="/admin/edit-user/{{ user.username }}">Edit Profile</a></li>
+      <!-- Key attributes section: show user call sign and squad -->
+      <!-- Key attributes -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8 text-center">
+        <div class="card card--loose">
+          <p class="text-sm muted">Call Sign</p>
+          <p class="text-2xl font-semibold" style="color: var(--gold)">
+            {{ user.call_sign }}
+          </p>
+        </div>
+        <div class="card card--loose">
+          <p class="text-sm muted">Squad</p>
+          <p class="text-2xl font-semibold" style="color: var(--gold)">
+            {{ user.squad }}
+          </p>
+        </div>
+      </div>
 
-      <!-- Additional admin/webmaster links: only render for those roles -->
-      {% if user.role == "webmaster" %}
-        <hr />
-        <!-- Approve or deny pending requests -->
-        <li><a href="/admin/requests">Pending Requests</a></li>
-        <!-- View full vacation request history -->
-        <li><a href="/admin/history">Vacation History</a></li>
-        <!-- Placeholder for user management page -->
-        <li><a href="/admin/users">Manage Users</a></li>
-      {% endif %}
-    </ul>
+      <!-- Primary navigation cards for main user actions -->
+      <!-- Main navigation cards -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Nav-card: Submit vacation/sick request -->
+        <!-- Request time off -->
+        <a
+          href="{{ url_for('request_time_off') }}"
+          class="nav-card no-underline"
+        >
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="nav-card__title text-lg mb-1">Request Time Off</h3>
+              <p class="nav-card__meta muted">
+                Submit a vacation or sick leave request.
+              </p>
+            </div>
+            <span class="emoji" aria-hidden="true">🏝</span>
+          </div>
+        </a>
 
-    <!-- Logout link to clear session and return to login page -->
-    <br />
-    <a href="/logout">Logout</a>
+        <!-- Nav-card: View squad monthly shift calendar -->
+        <!-- View calendar -->
+        <a href="{{ url_for('calendar_view') }}" class="nav-card no-underline">
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="nav-card__title text-lg mb-1">View Calendar</h3>
+              <p class="nav-card__meta muted">
+                See your squad’s monthly shift assignments.
+              </p>
+            </div>
+            <span class="emoji" aria-hidden="true">📅</span>
+          </div>
+        </a>
+
+        <!-- Nav-card: View balances and request history -->
+        <!-- My Requests -->
+        <a href="{{ url_for('my_requests') }}" class="nav-card no-underline">
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="nav-card__title text-lg mb-1">My Requests</h3>
+              <p class="nav-card__meta muted">
+                See Vacation/Sick balances (YTD) and request history.
+              </p>
+            </div>
+            <span class="emoji" aria-hidden="true">📋</span>
+          </div>
+        </a>
+
+        <!-- Admin-only section: gated by session.role -->
+        {# Admin-only links (gate by session role) #} {% set role =
+        session.get('role') %} {% if role in ['webmaster', 'admin',
+        'supervisor'] %}
+        <div class="col-span-full mt-2">
+          <div class="admin-banner">ADMINISTRATOR &amp; SUPERVISOR TOOLS</div>
+        </div>
+
+        <!-- Nav-card: Admin review pending requests -->
+        <!-- Pending Requests -->
+        <a href="{{ url_for('admin_requests') }}" class="nav-card no-underline">
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="nav-card__title text-lg mb-1">Pending Requests</h3>
+              <p class="nav-card__meta muted">
+                Approve or deny vacation/sick requests.
+              </p>
+            </div>
+            <span class="emoji" aria-hidden="true">🗂️</span>
+          </div>
+        </a>
+        <!-- Nav-card: Admin audit log of handled requests -->
+        <!-- Vacation History -->
+        <a href="{{ url_for('admin_history') }}" class="nav-card no-underline">
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="nav-card__title text-lg mb-1">Vacation History</h3>
+              <p class="nav-card__meta muted">
+                Audit log of past handled requests.
+              </p>
+            </div>
+            <span class="emoji" aria-hidden="true">📚</span>
+          </div>
+        </a>
+        <!-- Nav-card: Admin open/close vacation bidding -->
+        <!-- Vacation Bidding -->
+        <a
+          href="{{ url_for('vacation_bidding') }}"
+          class="nav-card no-underline"
+        >
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="nav-card__title text-lg mb-1">Vacation Bidding</h3>
+              <p class="nav-card__meta muted">
+                Open/close vacation bidding in seniority order.
+              </p>
+            </div>
+            <span class="emoji" aria-hidden="true">🗓️</span>
+          </div>
+        </a>
+        <!-- Nav-card (form-wrapped): Run NCCPD accrual (carryover + annual entitlement) -->
+        <form action="{{ url_for('nccpd_run_accrual') }}" method="POST">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}" />
+          <!-- Link triggers form.submit() with JS confirm prompt -->
+          <a
+            href="#"
+            class="nav-card no-underline"
+            onclick="if (confirm('Run NCCPD accrual now? This will recompute balances for the current calendar year.')) { this.closest('form').submit(); } return false;"
+          >
+            <div class="flex items-start justify-between">
+              <div>
+                <h3 class="nav-card__title text-lg mb-1">RUN NCCPD ACCRUAL</h3>
+                <p class="nav-card__meta muted">
+                  Apply carryover/min-use and add annual entitlement.
+                </p>
+              </div>
+              <span class="emoji" aria-hidden="true">⚙️</span>
+            </div>
+          </a>
+        </form>
+
+        <!-- Nav-card: Admin user editor -->
+        <!-- Edit Users (matches other nav-card tiles + 👥 emoji) -->
+        <a
+          href="{{ url_for('edit_user', username=session.get('username')) }}"
+          class="nav-card no-underline"
+        >
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="nav-card__title text-lg mb-1">Edit Users</h3>
+              <p class="nav-card__meta muted">
+                Open the user editor and choose any officer.
+              </p>
+            </div>
+            <span class="emoji" aria-hidden="true">👥</span>
+          </div>
+        </a>
+        {% endif %}
+      </div>
+
+      <!-- Logout action at bottom of dashboard -->
+      <!-- Logout button -->
+      <div class="mt-10 text-center">
+        <a href="{{ url_for('logout') }}" class="btn btn--danger">Logout</a>
+      </div>
+    </div>
+    <!-- End of landing.html -->
   </body>
 </html>

@@ -2,81 +2,129 @@
 <html lang="en">
   <!--
     Template: admin_history.html
-    Purpose: Display a table of all processed time-off requests for admin audit.
-    Accessible only to users with 'admin' or 'webmaster' roles.
+    Visual refresh only. All data/loops/routes unchanged.
   -->
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vacation Request History</title>
-    <!-- Consider adding CSS link here for consistent styling -->
+    <title>Request History</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
   </head>
-  <body>
-    <!-- Main heading for the history page -->
-    <h2>Vacation Request History</h2>
 
-    <!-- Table showing each request log entry -->
-    <table border="1" cellspacing="0" cellpadding="4">
-      <!-- Table header section -->
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Call Sign</th>
-          <th>Sector</th>
-          <th>Date</th>
-          <th>Hours</th>
-          <th>Status</th>
-          <th>Decision</th>
-          <th>Handled By</th>
-          <th>Timestamp</th>
-        </tr>
-      </thead>
+  <body class="theme-dark min-h-screen flex items-center justify-center">
+    <div class="w-full max-w-6xl animate-fade-in p-6">
+      {% include '_toasts.html' %}
 
-      <!-- Table body: loop over request_log entries passed from view -->
-      <tbody>
-        {% for log in request_log %}
-        <tr>
-          <!-- Display user's name -->
-          <td>{{ log.name }}</td>
+      <!-- Header -->
+      <header class="text-center mb-6">
+        <h2 class="text-4xl font-bold tracking-tight">Request History</h2>
+        <p class="mt-2 text-sm muted">
+          Auditable log of processed vacation and sick requests.
+        </p>
+      </header>
 
-          <!-- Display user's call sign for quick identification -->
-          <td>{{ log.call_sign }}</td>
+      <!-- History Table -->
+      <div class="card overflow-hidden">
+        <table class="min-w-full table-auto">
+          <thead>
+            <tr>
+              <th
+                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider muted"
+              >
+                Name
+              </th>
+              <th
+                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider muted"
+              >
+                Call Sign
+              </th>
+              <th
+                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider muted"
+              >
+                Sector
+              </th>
+              <th
+                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider muted"
+              >
+                Date
+              </th>
+              <th
+                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider muted"
+              >
+                Type
+              </th>
+              <th
+                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider muted"
+              >
+                Hours
+              </th>
+              <th
+                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider muted"
+              >
+                Status
+              </th>
+              <th
+                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider muted"
+              >
+                Handled By
+              </th>
+              <th
+                class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider muted"
+              >
+                Timestamp
+              </th>
+            </tr>
+          </thead>
 
-          <!-- Display department sector -->
-          <td>{{ log.sector }}</td>
+          <tbody>
+            {% for log in request_log %} {% set status = (log.status or
+            '')|lower %} {% set t = (log.type or '')|lower %}
+            <tr style="border-top: 1px solid var(--border)">
+              <td class="px-4 py-3 whitespace-nowrap">{{ log.name }}</td>
+              <td class="px-4 py-3 whitespace-nowrap">{{ log.call_sign }}</td>
+              <td class="px-4 py-3 whitespace-nowrap">{{ log.sector }}</td>
+              <td class="px-4 py-3 whitespace-nowrap">{{ log.date }}</td>
+              <td class="px-4 py-3 whitespace-nowrap">
+                {{ (log.type or '')|title }}
+              </td>
+              <td class="px-4 py-3 whitespace-nowrap">
+                {{ '%.2f' % (log.hours or 0) }}
+              </td>
 
-          <!-- Date of the request -->
-          <td>{{ log.date }}</td>
+              <!-- Unified status badge -->
+              <td class="px-4 py-3 whitespace-nowrap">
+                {% if status == 'approved' %}
+                <span class="badge badge--success">Approved</span>
+                {% elif status in ['denied', 'cancelled', 'canceled'] %}
+                <span class="badge badge--danger">
+                  {{ 'Cancelled' if status in ['cancelled','canceled'] else
+                  'Denied' }}
+                </span>
+                {% elif status == 'logged' %}
+                <span class="badge badge--info">Logged</span>
+                {% elif status == 'pending' %}
+                <span class="badge badge--gold">Pending</span>
+                {% else %}
+                <span class="badge">{{ status|capitalize or 'Unknown' }}</span>
+                {% endif %}
+              </td>
 
-          <!-- Number of hours approved or logged -->
-          <td>{{ log.hours }}</td>
+              <td class="px-4 py-3 whitespace-nowrap">{{ log.handled_by }}</td>
+              <td class="px-4 py-3 whitespace-nowrap">{{ log.timestamp }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
 
-          <!-- Raw status value for clarity -->
-          <td>{{ log.status }}</td>
-
-          <!-- Iconic decision column based on status -->
-          <td>
-            {% if log.status == 'approved' %}
-            <!-- Approved requests get a green checkmark -->
-            ✅ Approved {% elif log.status == 'denied' %}
-            <!-- Denied requests get a red cross -->
-            ❌ Denied {% else %}
-            <!-- Pending requests show a clock icon -->
-            ⏳ Pending {% endif %}
-          </td>
-
-          <!-- Admin username or display name who handled the request -->
-          <td>{{ log.handled_by }}</td>
-
-          <!-- Timestamp of when the request was processed -->
-          <td>{{ log.timestamp }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-
-    <!-- Navigation link back to the main dashboard -->
-    <br />
-    <a href="/landing">&larr; Back to Dashboard</a>
+      <!-- Back to dashboard -->
+      <div class="mt-6 text-center">
+        <a href="{{ url_for('landing') }}" class="btn"> ← Back to Dashboard </a>
+      </div>
+    </div>
   </body>
 </html>

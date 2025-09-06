@@ -3,57 +3,480 @@
   <!--
     Template: request_time_off.html
     Purpose: Provide a form for users to submit time-off requests (vacation or sick leave).
-    Accessible only to authenticated users; posts to '/submit-request' route via POST.
+
+    Notes:
+      - New segmented control (Single / Multiple) with hover.
+      - Policy banner centered (no icon).
+      - Emoji icons for Vacation (🏖️) and Sick (🏥).
+      - Today/Tomorrow shortcuts removed.
+      - Keeps duplicate re-submit flow intact.
   -->
   <head>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Request Time Off</title>
-    <!-- TODO: Add CSS for form layout and mobile responsiveness -->
+    <script src="https://cdn.tailwindcss.com"></script>
   </head>
-  <body>
-    <!-- Page header -->
-    <h2>Request Time Off</h2>
 
-    <!-- Time-off request form -->
-    <form action="/submit-request" method="POST">
-      <!-- Date picker for the requested day -->
-      <label for="date">Date:</label>
-      <input type="date" name="date" id="date" required />
-      <br /><br />
+  <body class="theme-dark min-h-screen flex items-center justify-center">
+    <div class="w-full max-w-md animate-fade-in">
+      {# Unified toasts (success/error/warning/info) #} {% include
+      '_toasts.html' %}
 
-      <!-- Dropdown to choose vacation or sick leave -->
-      <label for="type">Type:</label>
-      <select name="type" id="type" required>
-        <option value="vacation">Vacation</option>
-        <option value="sick">Sick</option>
-      </select>
-      <br /><br />
+      <!-- Page header -->
+      <header class="mb-6 text-center">
+        <h2 class="text-4xl font-bold tracking-tight">Request Time Off</h2>
 
-      <!-- Number input for hours requested (increments of 0.25) -->
-      <label for="hours">Hours:</label>
+        <!-- Policy banner (centered, no icon) -->
+        <div class="mt-3 card card--tight mx-auto max-w-md text-center">
+          <div class="text-sm space-y-1.5">
+            <div><strong>Vacation</strong>: deducts on approval</div>
+            <div><strong>Sick</strong>: deducts immediately</div>
+            <div><strong>Multi-day</strong>: fixed hours per day</div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Balances -->
+      <div class="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <!-- Vacation Left -->
+        <div class="card card--tight flex items-center justify-between">
+          <div>
+            <p class="text-xs muted">Vacation Left</p>
+            <p class="text-2xl font-semibold" style="color: var(--gold)">
+              {{ '%.2f' % vacation_left }} hrs
+            </p>
+
+            {# Optional progress bar if total is provided #} {% if
+            vacation_total is defined and vacation_total > 0 %} {% set vac_pct =
+            (vacation_left / vacation_total * 100) | round(0, 'floor') %}
+            <div class="mt-2 progress" aria-label="Vacation remaining">
+              <div class="progress__fill" style="width: {{ vac_pct }}%;"></div>
+            </div>
+            <p class="text-xs muted mt-1">{{ vac_pct }}% remaining</p>
+            {% endif %}
+          </div>
+          <!-- Vacation emoji -->
+          <span class="emoji" role="img" aria-label="vacation">🏖️</span>
+        </div>
+
+        <!-- Sick Left -->
+        <div class="card card--tight flex items-center justify-between">
+          <div>
+            <p class="text-xs muted">Sick Left</p>
+            <p class="text-2xl font-semibold" style="color: var(--gold)">
+              {{ '%.2f' % sick_left }} hrs
+            </p>
+
+            {# Optional progress bar if total is provided #} {% if sick_total is
+            defined and sick_total > 0 %} {% set sick_pct = (sick_left /
+            sick_total * 100) | round(0, 'floor') %}
+            <div class="mt-2 progress" aria-label="Sick remaining">
+              <div class="progress__fill" style="width: {{ sick_pct }}%;"></div>
+            </div>
+            <p class="text-xs muted mt-1">{{ sick_pct }}% remaining</p>
+            {% endif %}
+          </div>
+          <!-- Sick emoji -->
+          <span class="emoji" role="img" aria-label="hospital">🏥</span>
+        </div>
+      </div>
+
+      <!-- Time-off request form -->
+      <form
+        action="{{ url_for('submit_request') }}"
+        method="POST"
+        class="card card--loose w-full"
+      >
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}" />
+        <!-- Request mode (single vs multiple days) -->
+        <div class="mb-4 text-center">
+          <fieldset>
+            <legend class="block text-sm font-medium mb-2">Request Type</legend>
+            <div class="segmented mx-auto">
+              <label>
+                <input
+                  type="radio"
+                  name="range_mode"
+                  value="single"
+                  checked
+                  aria-describedby="range_mode_help"
+                />
+                <span class="pill">Single day</span>
+              </label>
+              <label>
+                <input type="radio" name="range_mode" value="multi" />
+                <span class="pill">Multiple days</span>
+              </label>
+            </div>
+            <p id="range_mode_help" class="text-xs muted mt-2 text-center">
+              Choose “Multiple days” to request a continuous date range.
+            </p>
+          </fieldset>
+        </div>
+
+        <!-- Start Date (always shown) -->
+        <div class="mb-4">
+          <label for="date" class="block text-sm font-medium"
+            >Start date:</label
+          >
+          <input
+            type="date"
+            name="date"
+            id="date"
+            required
+            min="{{ current_date }}"
+            value="{{ current_date }}"
+            class="mt-1 block w-full border rounded-md shadow-sm bg-[var(--surface)] border-[var(--border)] text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-[color:rgba(201,162,39,0.25)] focus:border-[var(--gold)]"
+            aria-describedby="start_date_help"
+          />
+          <p id="start_date_help" class="text-xs muted mt-1 text-center">
+            Pick the first day you will be out. Choose “Multiple days” above to
+            add an end date.
+          </p>
+        </div>
+
+        <!-- End Date (only used when range_mode=multi) -->
+        <div class="mb-4" id="end-date-wrapper" hidden>
+          <label for="end_date" class="block text-sm font-medium"
+            >End date:</label
+          >
+          <input
+            type="date"
+            name="end_date"
+            id="end_date"
+            min="{{ current_date }}"
+            value="{{ current_date }}"
+            class="mt-1 block w-full border rounded-md shadow-sm bg-[var(--surface)] border-[var(--border)] text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-[color:rgba(201,162,39,0.25)] focus:border-[var(--gold)]"
+            aria-describedby="end_date_help"
+          />
+          <p id="end_date_help" class="text-xs muted mt-1 text-center">
+            Inclusive. We’ll submit one request per day in the range.
+          </p>
+        </div>
+
+        <!-- Request category -->
+        <div class="mb-4">
+          <label for="type" class="block text-sm font-medium">Type:</label>
+          <select
+            name="type"
+            id="type"
+            required
+            class="mt-1 block w-full border rounded-md shadow-sm bg-[var(--surface)] border-[var(--border)] text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-[color:rgba(201,162,39,0.25)] focus:border-[var(--gold)]"
+          >
+            <option value="vacation">Vacation</option>
+            <option value="sick">Sick</option>
+          </select>
+        </div>
+
+        <!-- Hours per day (only when Multiple days is selected) -->
+        <div class="mb-4" id="hours-per-day-wrapper" hidden>
+          <fieldset>
+            <legend class="block text-sm font-medium mb-1">
+              Hours per day (for multiple days):
+            </legend>
+            <div class="flex flex-wrap items-center gap-2">
+              <!-- 8.00 -->
+              <label class="cursor-pointer">
+                <input
+                  type="radio"
+                  name="hours_per_day_choice"
+                  value="8.00"
+                  class="sr-only peer"
+                />
+                <span
+                  class="inline-flex items-center px-3 py-1.5 rounded-full border bg-[var(--surface)] border-[var(--border)] text-sm peer-checked:border-[var(--gold)] peer-checked:text-[var(--gold)]"
+                >
+                  8.00
+                </span>
+              </label>
+              <!-- 11.25 (default selected by JS if none chosen) -->
+              <label class="cursor-pointer">
+                <input
+                  type="radio"
+                  name="hours_per_day_choice"
+                  value="11.25"
+                  class="sr-only peer"
+                />
+                <span
+                  class="inline-flex items-center px-3 py-1.5 rounded-full border bg-[var(--surface)] border-[var(--border)] text-sm peer-checked:border-[var(--gold)] peer-checked:text-[var(--gold)]"
+                >
+                  11.25
+                </span>
+              </label>
+              <!-- 12.00 -->
+              <label class="cursor-pointer">
+                <input
+                  type="radio"
+                  name="hours_per_day_choice"
+                  value="12.00"
+                  class="sr-only peer"
+                />
+                <span
+                  class="inline-flex items-center px-3 py-1.5 rounded-full border bg-[var(--surface)] border-[var(--border)] text-sm peer-checked:border-[var(--gold)] peer-checked:text-[var(--gold)]"
+                >
+                  12.00
+                </span>
+              </label>
+            </div>
+            <p class="text-xs muted mt-1">
+              This sets the <strong>Hours</strong> field per day for your
+              multi-day request.
+            </p>
+          </fieldset>
+        </div>
+
+        <!-- Hours input (source of truth submitted to server) -->
+        <div class="mb-6">
+          <label
+            for="hours"
+            class="block text-sm font-medium flex items-center justify-between"
+          >
+            <span>Hours (per day)</span>
+            <span id="lockedBadge" class="badge badge--gold" hidden
+              >Locked</span
+            >
+          </label>
+          <input
+            type="number"
+            name="hours"
+            id="hours"
+            step="0.25"
+            min="1"
+            max="24"
+            required
+            class="mt-1 block w-full border rounded-md shadow-sm bg-[var(--surface)] border-[var(--border)] text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-[color:rgba(201,162,39,0.25)] focus:border-[var(--gold)]"
+          />
+        </div>
+
+        <!-- Optional note -->
+        <div class="mb-6">
+          <label for="note" class="block text-sm font-medium"
+            >Note (optional):</label
+          >
+          <textarea
+            name="note"
+            id="note"
+            rows="4"
+            class="mt-1 block w-full border rounded-md shadow-sm bg-[var(--surface)] border-[var(--border)] text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-[color:rgba(201,162,39,0.25)] focus:border-[var(--gold)]"
+          ></textarea>
+        </div>
+
+        <!-- Submit -->
+        <div>
+          <input
+            id="submitBtn"
+            type="submit"
+            value="Submit Request"
+            disabled
+            class="btn w-full disabled:opacity-50 disabled:cursor-not-allowed"
+          />
+        </div>
+      </form>
+
+      <!-- Back to dashboard -->
+      <div class="mt-6 text-center">
+        <a href="{{ url_for('landing') }}">&larr; Back to Dashboard</a>
+      </div>
+    </div>
+
+    <!-- Duplicate re-submit confirm flow (legacy; unchanged) -->
+    {% if confirm_needed and resubmit_payload %}
+    <form
+      id="resubmitForm"
+      action="{{ url_for('submit_request') }}"
+      method="POST"
+      style="display: none"
+    >
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}" />
+      <input type="hidden" name="type" value="{{ resubmit_payload.type }}" />
+      <input type="hidden" name="date" value="{{ resubmit_payload.date }}" />
+      {% if resubmit_payload.end_date %}
       <input
-        type="number"
-        name="hours"
-        id="hours"
-        step="0.25"
-        min="1"
-        max="24"
-        required
+        type="hidden"
+        name="end_date"
+        value="{{ resubmit_payload.end_date }}"
       />
-      <br /><br />
-
-      <!-- Optional note field for additional context -->
-      <label for="note">Note (optional):</label><br />
-      <textarea name="note" id="note" rows="4" cols="50"></textarea>
-      <br /><br />
-
-      <!-- Submit button to send request to server -->
-      <input type="submit" value="Submit Request" />
+      {% endif %} {% if resubmit_payload.range_mode %}
+      <input
+        type="hidden"
+        name="range_mode"
+        value="{{ resubmit_payload.range_mode }}"
+      />
+      {% endif %}
+      <input type="hidden" name="hours" value="{{ resubmit_payload.hours }}" />
+      <input type="hidden" name="note" value="{{ resubmit_payload.note }}" />
+      <input type="hidden" name="force" value="1" />
     </form>
 
-    <!-- Navigation link back to user dashboard -->
-    <br />
-    <a href="/landing">&larr; Back to Dashboard</a>
+    <script>
+      (function () {
+        const msg =
+          "You already submitted a request for this day, do you wish to re-submit it?";
+        if (confirm(msg)) {
+          document.getElementById("resubmitForm").submit();
+        } else {
+          window.location.href = "{{ url_for('request_time_off') }}";
+        }
+      })();
+    </script>
+    {% endif %}
+
+    <!-- Behavior scripts -->
+    <script>
+      // Behavior + Validation (vanilla JS)
+      (function () {
+        // --- Element references ---
+        const form =
+          document.querySelector(
+            "form[action$=\"{{ url_for('submit_request') }}\"]"
+          ) || document.querySelector("form");
+        const modeRadios = document.querySelectorAll(
+          'input[name="range_mode"]'
+        ); // "single" | "multi"
+        const start = document.getElementById("date"); // start date
+        const endWrap = document.getElementById("end-date-wrapper"); // end-date container
+        const end = document.getElementById("end_date"); // end date input
+        const hoursWrap = document.getElementById("hours-per-day-wrapper"); // radios (8/11.25/12) for multi
+        const perDayRadios = document.querySelectorAll(
+          'input[name="hours_per_day_choice"]'
+        );
+        const hoursInput = document.getElementById("hours"); // actual "hours" posted to server
+        const submitBtn = document.getElementById("submitBtn"); // submit button (disabled until valid)
+
+        // --- Helpers ---
+        function currentMode() {
+          return [...modeRadios].find((r) => r.checked)?.value || "single";
+        }
+        function anyPerDayChosen() {
+          return [...perDayRadios].some((r) => r.checked);
+        }
+        function syncEndDateMin() {
+          if (!end || !start) return;
+          end.min = start.value || end.min; // keep end >= start
+          if (end.value && end.value < end.min) end.value = end.min;
+        }
+
+        // Lock/unlock the Hours input while preserving submission of value
+        function setHoursLocked(val, lock) {
+          if (!hoursInput) return;
+          if (val != null) {
+            const num = Number(val);
+            hoursInput.value = Number.isFinite(num)
+              ? num.toFixed(2)
+              : hoursInput.value || "";
+          }
+          // Use readOnly (NOT disabled) so the field is still submitted
+          hoursInput.readOnly = !!lock;
+          hoursInput.classList.toggle("cursor-not-allowed", !!lock);
+
+          const lockedBadge = document.getElementById("lockedBadge");
+          if (lockedBadge) lockedBadge.hidden = !lock;
+
+          // Subtle visual cue when locked (no Tailwind color dependency)
+          if (lock) {
+            hoursInput.dataset.origBg = hoursInput.style.backgroundColor || "";
+            hoursInput.style.backgroundColor = "rgba(255,255,255,0.06)";
+          } else {
+            hoursInput.style.backgroundColor = hoursInput.dataset.origBg || "";
+            delete hoursInput.dataset.origBg;
+          }
+        }
+
+        // Apply UI rules for single vs multi
+        function applyRangeMode() {
+          const isMulti = currentMode() === "multi";
+
+          // Toggle visibility / required flags
+          endWrap.hidden = !isMulti;
+          hoursWrap.hidden = !isMulti;
+          if (end) end.required = isMulti;
+
+          // In multi-day, force hours to one of the fixed choices (default 11.25)
+          if (isMulti) {
+            let chosen = [...perDayRadios].find((r) => r.checked)?.value;
+            if (!chosen) {
+              const def = [...perDayRadios].find((r) => r.value === "11.25");
+              if (def) {
+                def.checked = true;
+                chosen = def.value;
+              }
+            }
+            setHoursLocked(chosen, true); // lock
+          } else {
+            setHoursLocked(null, false); // unlock for single-day (free entry)
+          }
+
+          syncEndDateMin();
+          updateSubmitEnabled();
+        }
+
+        // Validation logic (enables/disables Submit)
+        function isFormValid() {
+          const hasStart = !!(start && start.value);
+          const hoursVal = parseFloat(
+            (hoursInput && hoursInput.value) || "NaN"
+          );
+          const hoursOk =
+            !Number.isNaN(hoursVal) && hoursVal > 0 && hoursVal <= 24;
+
+          if (!hasStart || !hoursOk) return false;
+
+          if (currentMode() === "multi") {
+            const hasEnd = !!(end && end.value);
+            if (!hasEnd) return false;
+            if (!anyPerDayChosen()) return false; // require fixed per-day choice
+            if (end.value < start.value) return false;
+          }
+          return true;
+        }
+
+        function updateSubmitEnabled() {
+          const ok = isFormValid();
+          if (submitBtn) {
+            submitBtn.disabled = !ok;
+            submitBtn.setAttribute("aria-disabled", String(!ok));
+          }
+        }
+
+        // --- Wire events ---
+        modeRadios.forEach((r) => r.addEventListener("change", applyRangeMode));
+        perDayRadios.forEach((r) =>
+          r.addEventListener("change", () => {
+            if (r.checked) setHoursLocked(r.value, true);
+            updateSubmitEnabled();
+          })
+        );
+        [start, end, hoursInput].forEach((el) => {
+          if (!el) return;
+          el.addEventListener("input", () => {
+            syncEndDateMin();
+            updateSubmitEnabled();
+          });
+          el.addEventListener("change", () => {
+            syncEndDateMin();
+            updateSubmitEnabled();
+          });
+        });
+
+        // Initialize on page load
+        applyRangeMode();
+        updateSubmitEnabled();
+
+        // Final guard: block submit if somehow invalid (DOM tampering)
+        if (form) {
+          form.addEventListener("submit", (e) => {
+            if (!isFormValid()) {
+              e.preventDefault();
+              updateSubmitEnabled();
+            }
+          });
+        }
+      })();
+    </script>
   </body>
 </html>

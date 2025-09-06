@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<!--
+  Template: my_requests.html
+  Purpose: Display a user's time-off requests for the current year along with summary balances.
+  Data contract (from Flask view):
+    - current_year (int): The year being displayed.
+    - current_date (str 'YYYY-MM-DD'): Today's date for future/past checks.
+    - vacation_used_ytd (float): Vacation hours used year-to-date.
+    - vacation_left (float): Vacation hours remaining.
+    - sick_used_ytd (float): Sick hours used year-to-date.
+    - sick_left (float): Sick hours remaining.
+    - rows (list[dict]): Each row has keys:
+        start_date (YYYY-MM-DD), end_date (YYYY-MM-DD),
+        type ('Vacation'|'Sick'|...), hours_per_day (float),
+        status ('pending'|'approved'|'denied'|'cancelled'|'logged')
+  Notes:
+    - Uses Tailwind via CDN and a local style.css for shared components.
+    - Keep business logic in Python; Jinja here formats/branches only.
+-->
+<html lang="en">
+  <head>
+    <!-- Basic document metadata for encoding and responsive layout -->
+    <meta charset="UTF-8" />
+    <!-- Tailwind via CDN (keep consistent with global design system) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Local stylesheet for shared variables/components (dark mode helpers, buttons) -->
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
+  </head>
+
+  <body
+    class="theme-dark min-h-screen flex items-center justify-center"
+    <!--
+    Dark
+    theme
+    baseline
+    +
+    center
+    the
+    main
+    container
+    both
+    axes
+    --
+  >
+    >
+    <!-- Main container wraps EVERYTHING on the page -->
+    <div class="w-full max-w-5xl animate-fade-in p-6">
+      <!-- Toasts: transient user notifications (success/error/info) -->
+      {% include '_toasts.html' %}
+
+      <!-- Page heading shows current year context for requests -->
+      <!-- Header -->
+      <h2 class="text-3xl font-bold mb-6 text-white text-center">
+        My Requests — {{ current_year }}
+      </h2>
+
+      <!-- Summary cards: show quick YTD/remaining for Vacation and Sick -->
+      <!-- Summary Balances -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <!-- Card: Vacation summary -->
+        <!-- Vacation Summary -->
+        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+          <h3
+            class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2"
+          >
+            Vacation Hours
+          </h3>
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm text-gray-500 dark:text-gray-400">Used YTD</p>
+              <p
+                class="text-2xl font-bold text-yellow-500 dark:text-yellow-400"
+              >
+                {{ '%.2f' % vacation_used_ytd }} hrs
+              </p>
+            </div>
+            <div class="text-right">
+              <p class="text-sm text-gray-500 dark:text-gray-400">Remaining</p>
+              <p
+                class="text-2xl font-bold text-yellow-500 dark:text-yellow-400"
+              >
+                {{ '%.2f' % vacation_left }} hrs
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card: Sick summary -->
+        <!-- Sick Summary -->
+        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+          <h3
+            class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2"
+          >
+            Sick Hours
+          </h3>
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm text-gray-500 dark:text-gray-400">Used YTD</p>
+              <p
+                class="text-2xl font-bold text-yellow-500 dark:text-yellow-400"
+              >
+                {{ '%.2f' % sick_used_ytd }} hrs
+              </p>
+            </div>
+            <div class="text-right">
+              <p class="text-sm text-gray-500 dark:text-gray-400">Remaining</p>
+              <p
+                class="text-2xl font-bold text-yellow-500 dark:text-yellow-400"
+              >
+                {{ '%.2f' % sick_left }} hrs
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- END Summary Balances grid -->
+
+      <!-- Section: Tabular view of individual requests (flat list) -->
+      <!-- Section header for the list -->
+      <h3
+        class="text-xl font-semibold text-yellow-600 dark:text-yellow-400 mb-3 mt-2"
+      >
+        My Requests ({{ current_year }})
+      </h3>
+
+      <!-- Semantic table for accessibility; head defines column labels -->
+      <!-- Requests table (ungrouped; one row per day/request) -->
+      <div
+        class="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden"
+      >
+        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <thead class="bg-gray-50 dark:bg-gray-700">
+            <tr>
+              <th
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+              >
+                Date
+                <!-- Request date range -->
+              </th>
+              <th
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+              >
+                Type
+                <!-- Vacation/Sick -->
+              </th>
+              <th
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+              >
+                Hours/Day
+                <!-- Number of hours requested per day -->
+              </th>
+              <th
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+              >
+                Status
+                <!-- Request status badge -->
+              </th>
+              <th
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+              >
+                Actions
+                <!-- Possible user actions -->
+              </th>
+            </tr>
+          </thead>
+
+          <!-- Tbody renders rows if any; else shows a single "no data" row -->
+          <tbody
+            class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700"
+          >
+            {% if rows and rows|length > 0 %} {% for r in rows %} {# Normalize
+            status to lowercase for simpler comparisons #} {% set status =
+            (r.status or '')|lower %} {# Flag whether the request is in the
+            future (for actionable UI) #} {% set is_future = (r.start_date >=
+            current_date) %}
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap">
+                <!-- Show a single date if start == end; otherwise show a range with an en dash -->
+                {% if r.start_date == r.end_date %} {{ r.start_date }} {% else
+                %} {{ r.start_date }} – {{ r.end_date }} {% endif %}
+              </td>
+
+              <td class="px-6 py-4 whitespace-nowrap">{{ r.type }}</td>
+
+              <td class="px-6 py-4 whitespace-nowrap">
+                {{ '%.2f' % r.hours_per_day }}h
+              </td>
+
+              <td class="px-6 py-4 whitespace-nowrap">
+                <!-- Map status to a colored badge; keep labels consistent with backend states -->
+                {% if status == 'approved' %}
+                <span
+                  class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800"
+                >
+                  Approved
+                </span>
+                {% elif status in ['denied', 'cancelled', 'canceled'] %}
+                <span
+                  class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-200 text-gray-800"
+                >
+                  {{ 'Cancelled' if status in ['cancelled','canceled'] else
+                  'Denied' }}
+                </span>
+                {% elif status == 'logged' %}
+                <span
+                  class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800"
+                >
+                  Logged
+                </span>
+                {% else %}
+                <span
+                  class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800"
+                >
+                  Pending
+                </span>
+                {% endif %}
+              </td>
+
+              <td class="px-6 py-4 whitespace-nowrap">
+                <!-- Only future, pending Vacation requests can be cancelled by the user -->
+                {% if r.type == 'Vacation' and status == 'pending' and is_future
+                %}
+                <form
+                  action="{{ url_for('cancel_request') }}"
+                  method="POST"
+                  onsubmit="return confirm('Cancel this pending vacation request for {{ r.start_date }}?');"
+                  style="display: inline"
+                >
+                  <!-- CSRF: required for POST forms protected by @require_csrf -->
+                  <input
+                    type="hidden"
+                    name="_csrf"
+                    value="{{ csrf_token() }}"
+                  />
+                  <!-- Identify which request to cancel (the start_date is the primary key for single-day entries) -->
+                  <input type="hidden" name="date" value="{{ r.start_date }}" />
+                  <button
+                    type="submit"
+                    class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-red-600 hover:bg-red-700 text-white shadow-sm"
+                    <!--
+                    Destructive
+                    primary
+                    action
+                    styled
+                    in
+                    red;
+                    confirm()
+                    guards
+                    accidental
+                    clicks
+                    --
+                  >
+                    > Cancel
+                  </button>
+                </form>
+                {% else %}
+                <!-- No action available (past, non-pending, or non-Vacation types) -->
+                <span class="text-xs text-gray-400">—</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %} {% else %}
+            <!-- Empty state when there are no requests for the year -->
+            <tr>
+              <td
+                colspan="5"
+                class="px-6 py-6 text-center text-gray-500 dark:text-gray-400"
+              >
+                No requests yet for {{ current_year }}.
+              </td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Navigation back to landing; keep consistent with global button styles -->
+      <!-- Back to dashboard -->
+      <div class="mt-4 text-center">
+        <a
+          href="{{ url_for('landing') }}"
+          class="btn btn--primary text-black hover:text-black"
+        >
+          ← Back to Dashboard
+        </a>
+      </div>
+    </div>
+    <!-- END main container -->
+    <!-- End of my_requests.html -->
+  </body>
+</html>

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<!--
+  Template: manage_users.html
+  Purpose: Webmaster-only bulk editor for user squad, rank, call sign, sector, and skills.
+  Access: Protected at route level for 'webmaster' role.
+  Data contract (from Flask view):
+    - users (list[User]): list of user objects with attributes:
+        first_name, last_name, username, call_sign, sector, skills, squad, rank
+    - supervisor_ranks (list[str]): list of supervisor rank strings (used in tip footer).
+  Notes:
+    - Bulk form posts back to /manage_users for save-all updates.
+    - Individual users can be opened in full profile editor via "Edit Full Profile" link.
+    - All state-changing forms must include CSRF tokens (handled in Flask view).
+-->
+<html lang="en">
+<head>
+  <!-- Document metadata for encoding -->
+  <meta charset="UTF-8"/>
+  <!-- Viewport meta for mobile responsiveness -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Manage Users — Webmaster</title>
+
+  <!-- Tailwind CSS via CDN (consistent global design) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Local stylesheet for theme overrides -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="theme-dark min-h-screen"><!-- Apply dark theme baseline + min full viewport height -->
+  <!-- Main content container -->
+  <div class="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
+
+    <!-- Page header with back link, title -->
+    <div class="flex items-center justify-between">
+      <a href="{{ url_for('landing') }}" class="text-sm underline">← Back to Dashboard</a>
+      <h1 class="text-xl font-bold">Manage Users</h1>
+      <div></div>
+    </div>
+
+    <!-- Info card: guidance on allowed supervisor ranks and edit scope -->
+    <div class="card card--loose">
+      <div class="text-sm">
+        <strong>Webmaster‑only.</strong> Edit <em>squad</em>, <em>rank</em>, <em>call sign</em>, <em>sector</em>, and <em>skills</em> (comma‑separated).
+        Supervisors should use one of: 
+        <span class="badge badge--gold">Senior Sergeant</span>,
+        <span class="badge badge--gold">Sergeant</span>,
+        <span class="badge badge--gold">Lieutenant</span>,
+        <span class="badge badge--gold">Senior Lieutenant</span>.
+      </div>
+    </div>
+
+    <!-- Bulk edit form: allows editing multiple users' squad, rank, call sign, sector, skills -->
+    <form method="POST" action="{{ url_for('manage_users') }}" class="space-y-4">
+      <!-- Table header row -->
+      <div class="table-like">
+        <!-- Header row -->
+        <div class="row px-3 py-2 bg-[color:var(--surface)] border-b border-[color:var(--border)] font-semibold">
+          <div>User</div>
+          <div>Squad</div>
+          <div>Rank</div>
+          <div class="text-right">Actions</div>
+        </div>
+
+        <!-- Loop: render one row per user -->
+        {% for u in users %}
+        <div class="row px-3 py-3">
+          <!-- User identity and editable attributes -->
+          <div class="space-y-1">
+            <div class="font-semibold text-sm">
+              {{ u.first_name }} {{ u.last_name }}
+              <span class="text-xs muted">({{ u.username }})</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+              <!-- Call Sign field -->
+              <label class="block">
+                <span class="muted">Call sign</span>
+                <input name="call_sign[{{ u.username }}]" value="{{ u.call_sign or '' }}" />
+              </label>
+              <!-- Sector field -->
+              <label class="block">
+                <span class="muted">Sector</span>
+                <input name="sector[{{ u.username }}]" value="{{ u.sector or '' }}" />
+              </label>
+              <!-- Skills field -->
+              <label class="block md:col-span-1">
+                <span class="muted">Skills (comma)</span>
+                <input name="skills[{{ u.username }}]" value="{{ (u.skills|join(', ')) if u.skills else '' }}" />
+              </label>
+            </div>
+          </div>
+
+          <!-- Squad selection -->
+          <div>
+            <select name="squad[{{ u.username }}]" class="w-full">
+              {% set sq = u.squad or 'None' %}
+              <option value="None" {{ 'selected' if sq == 'None' or sq == '' else '' }}>None</option>
+              <option value="A" {{ 'selected' if sq == 'A' else '' }}>A</option>
+              <option value="B" {{ 'selected' if sq == 'B' else '' }}>B</option>
+              <option value="C" {{ 'selected' if sq == 'C' else '' }}>C</option>
+              <option value="D" {{ 'selected' if sq == 'D' else '' }}>D</option>
+            </select>
+          </div>
+
+          <!-- Rank input -->
+          <div>
+            <input name="rank[{{ u.username }}]" value="{{ u.rank or '' }}" />
+          </div>
+
+          <!-- Actions: link to edit full profile -->
+          <div class="flex items-start justify-end">
+            <a
+              href="{{ url_for('edit_user', username=u.username) }}"
+              class="px-3 py-1 rounded bg-blue-500 hover:bg-blue-600 text-white text-xs no-underline"
+            >
+              Edit Full Profile
+            </a>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Footer: supervisor tip and Save All Changes button -->
+      <div class="flex items-center justify-between">
+        <div class="text-xs muted">
+          Tip: Use consistent rank text for supervisors:
+          {{ supervisor_ranks|join(', ') }}.
+        </div>
+        <button type="submit" class="btn">Save All Changes</button>
+      </div>
+    </form>
+
+  </div>
+  <!-- End of manage_users.html -->
+</body>
+</html>

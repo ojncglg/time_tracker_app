@@ -1,0 +1,92 @@
+{# Partial: _toasts.html Purpose: Uniform toast rendering for Flask flash()
+messages across the app. Usage: Place `{% include '_toasts.html' %}` near the
+top of the page body. #} {% set _messages =
+get_flashed_messages(with_categories=True) %} {% if _messages %}
+<!-- Live region so screen readers announce messages -->
+<div
+  id="toast-stack"
+  class="fixed top-4 right-4 z-50 space-y-2"
+  role="status"
+  aria-live="polite"
+  aria-atomic="true"
+>
+  {% for category, message in _messages %} {# Normalize category to one of:
+  success | error | warning | info #} {% set cat = (category or 'info')|lower %}
+  {% if cat not in ['success','error','warning','info'] %} {% set cat = 'info'
+  %} {% endif %}
+
+  <!-- Map category to color & icon -->
+  {% set bg = { 'success': 'bg-green-600 text-white', 'error': 'bg-red-600
+  text-white', 'warning': 'bg-yellow-500 text-black', 'info': 'bg-gray-800
+  text-white' }[cat] %} {% set svg = { 'success': 'M9 12l2 2 4-4M12 22a10 10 0
+  110-20 10 10 0 010 20z', 'error': 'M12 8v4m0 4h.01M12 22a10 10 0 110-20 10 10
+  0 010 20z', 'warning': 'M12 9v4m0 4h.01M12 22a10 10 0 110-20 10 10 0 010 20z',
+  'info': 'M12 8h.01M11 12h1v6h-1m1 4a10 10 0 110-20 10 10 0 010 20z' }[cat] %}
+
+  <!-- Category-specific auto-dismiss durations (ms) -->
+  {% set ms = { 'success': 3500, 'warning': 5000, 'error': 6000, 'info': 4000
+  }[cat] %}
+
+  <div
+    class="toast-item flex items-start gap-3 rounded-lg shadow-lg px-4 py-3 {{ bg }} max-w-md"
+    data-timeout="{{ ms }}"
+    data-category="{{ cat }}"
+    role="alert"
+  >
+    <!-- Icon -->
+    <div class="pt-0.5">
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-5 w-5 opacity-90"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <path d="{{ svg }}" />
+      </svg>
+    </div>
+
+    <!-- Message -->
+    <div class="flex-1">
+      <p class="text-sm leading-5">{{ message }}</p>
+    </div>
+
+    <!-- Dismiss button -->
+    <button
+      type="button"
+      class="ml-2 inline-flex items-center justify-center rounded-md bg-black/10 hover:bg-black/20 px-2 py-1"
+      onclick="this.closest('.toast-item')?.remove()"
+      aria-label="Dismiss"
+      title="Dismiss"
+    >
+      ✕
+    </button>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+  // Auto-dismiss each toast using its category-specific timeout.
+  (function () {
+    const stack = document.getElementById("toast-stack");
+    if (!stack) return;
+
+    // Stagger slight fade-out for nicer UX
+    const items = stack.querySelectorAll(".toast-item");
+    items.forEach((el, i) => {
+      const ms = parseInt(el.getAttribute("data-timeout") || "4000", 10);
+      // Optional: small stagger so multiple toasts don't vanish at the same millisecond
+      const jitter = i * 150;
+
+      setTimeout(() => {
+        // Fade-out animation (tailwind-ish with inline style)
+        el.style.transition = "opacity 250ms ease, transform 250ms ease";
+        el.style.opacity = "0";
+        el.style.transform = "translateY(-4px)";
+        setTimeout(() => el.remove(), 260);
+      }, ms + jitter);
+    });
+  })();
+</script>
+{% endif %}

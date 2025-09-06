@@ -1,106 +1,148 @@
 <!DOCTYPE html>
 <html lang="en">
   <!--
-    Template: admin_requests.html
-    Purpose: Display pending time-off requests for administrators to review and act on.
-    Access: Restricted to users with 'admin' or 'webmaster' roles via @require_role decorator.
+    Template: admin_requests.html (grouped)
+    Visual refresh only. No logic or routes changed.
   -->
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Admin Requests</title>
-    <!-- TODO: Link to a shared CSS file for consistent styling -->
+    <title>Admin • Pending Requests</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
   </head>
 
-  <body>
-    <!-- Main heading for the admin requests page -->
-    <h2>Time-Off Requests</h2>
+  <body class="theme-dark min-h-screen">
+    <div class="max-w-6xl mx-auto p-6 space-y-6 animate-fade-in">
+      {% include '_toasts.html' %}
 
-    <!-- Table of all pending requests -->
-    <table border="1" cellspacing="0" cellpadding="4">
-      <thead>
-        <tr>
-          <th>User ID</th>
-          <th>Last Name</th>
-          <th>Call Sign</th>
-          <th>Sector</th>
-          <th>Date</th>
-          <th>Type</th>
-          <th>Hours</th>
-          <th>Note</th>
-          <th>Status</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
+      <header class="mb-2">
+        <h1 class="text-4xl font-bold tracking-tight">
+          Pending Time-Off Requests
+        </h1>
+        <p class="mt-2 text-sm muted">
+          Grouped by user & contiguous date range. Actions are per day.
+        </p>
+      </header>
 
-      <tbody>
-        <!-- Loop through each request object passed in from the view -->
-        {% for req in requests %}
-        <tr>
-          <!-- Unique identifier for the user who made the request -->
-          <td>{{ req.user }}</td>
+      {% if groups and groups|length > 0 %}
+      <div class="space-y-6">
+        {% for g in groups %} {% set t = (g.type or '')|lower %} {% set emoji =
+        '🏖️' if t == 'vacation' else ('🏥' if t == 'sick' else '📄') %}
 
-          <!-- Display the user's last name for readability -->
-          <td>{{ users[req.user].last_name }}</td>
+        <div class="card overflow-hidden">
+          <!-- Card header -->
+          <div
+            class="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
+            style="border-bottom: 1px solid var(--border)"
+          >
+            <div class="flex items-start gap-3">
+              <span class="emoji" aria-hidden="true">{{ emoji }}</span>
+              <div>
+                <div class="text-sm muted">
+                  {{ g.rank }} • {{ g.call_sign }} • {{ g.sector }}
+                </div>
+                <div class="text-lg font-semibold">
+                  {{ g.user_label }} — {{ g.type }} ({{ '%.2f' % g.hours_per_day
+                  }}h/day)
+                </div>
+              </div>
+            </div>
+            <div class="text-sm">
+              {% if g.start_date == g.end_date %} {{ g.start_date }} {% else %}
+              {{ g.start_date }} – {{ g.end_date }} {% endif %}
+            </div>
+          </div>
 
-          <!-- Officer's radios call sign -->
-          <td>{{ users[req.user].call_sign }}</td>
-
-          <!-- Department sector (e.g., Patrol, Traffic) -->
-          <td>{{ users[req.user].sector }}</td>
-
-          <!-- Requested date of time-off -->
-          <td>{{ req.date }}</td>
-
-          <!-- Type of leave: 'vacation' or 'sick' -->
-          <td>{{ req.type }}</td>
-
-          <!-- Number of hours requested -->
-          <td>{{ req.hours }}</td>
-
-          <!-- Optional note provided by the user -->
-          <td>{{ req.note }}</td>
-
-          <!-- Current status: 'pending', 'approved', 'denied', or 'logged' -->
-          <td>{{ req.status }}</td>
-
-          <!-- Actions column: only pending vacation requests can be approved/denied -->
-          <td>
-            {% if req.type == "vacation" and req.status == "pending" %}
-            <!-- Approve button submits a POST to /handle-request with action=approve -->
-            <form
-              action="/handle-request"
-              method="POST"
-              style="display: inline; margin-right: 4px"
+          <!-- Per-day rows with Approve/Deny -->
+          <div>
+            {% for d in g.days %} {% set status = (d.status or '')|lower %}
+            <div
+              class="p-4 flex items-center justify-between gap-4"
+              style="border-top: 1px solid var(--border)"
             >
-              <input type="hidden" name="user" value="{{ req.user }}" />
-              <input type="hidden" name="date" value="{{ req.date }}" />
-              <input type="hidden" name="action" value="approve" />
-              <input type="submit" value="Approve" />
-            </form>
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="text-sm font-medium">{{ d.date }}</div>
+                <div class="text-xs muted">{{ '%.2f' % d.hours }}h</div>
+                {% if d.note %}
+                <div
+                  class="text-xs muted italic truncate max-w-[40ch]"
+                  title="{{ d.note }}"
+                >
+                  “{{ d.note }}”
+                </div>
+                {% endif %}
+              </div>
 
-            <!-- Deny button submits a POST to /handle-request with action=deny -->
-            <form
-              action="/handle-request"
-              method="POST"
-              style="display: inline"
-            >
-              <input type="hidden" name="user" value="{{ req.user }}" />
-              <input type="hidden" name="date" value="{{ req.date }}" />
-              <input type="hidden" name="action" value="deny" />
-              <input type="submit" value="Deny" />
-            </form>
-            {% else %}
-            <!-- No actions available for sick requests or already handled vacations -->
-            No action {% endif %}
-          </td>
-        </tr>
+              {% if status == 'pending' %}
+              <div class="flex items-center gap-2">
+                <!-- Approve (unchanged POST) -->
+                <form action="{{ url_for('handle_request') }}" method="POST">
+                  <input
+                    type="hidden"
+                    name="_csrf"
+                    value="{{ csrf_token() }}"
+                  />
+                  <input type="hidden" name="user" value="{{ g.user }}" />
+                  <input type="hidden" name="date" value="{{ d.date }}" />
+                  <input type="hidden" name="action" value="approve" />
+                  <input
+                    type="submit"
+                    value="Approve"
+                    class="px-3 py-1 rounded-md bg-green-600 hover:bg-green-700 text-white text-sm font-semibold"
+                  />
+                </form>
+
+                <!-- Deny (unchanged POST) -->
+                <form action="{{ url_for('handle_request') }}" method="POST">
+                  <input
+                    type="hidden"
+                    name="_csrf"
+                    value="{{ csrf_token() }}"
+                  />
+                  <input type="hidden" name="user" value="{{ g.user }}" />
+                  <input type="hidden" name="date" value="{{ d.date }}" />
+                  <input type="hidden" name="action" value="deny" />
+                  <input
+                    type="submit"
+                    value="Deny"
+                    class="px-3 py-1 rounded-md bg-red-600 hover:bg-red-700 text-white text-sm font-semibold"
+                  />
+                </form>
+              </div>
+              {% else %} {% if status == 'approved' %}
+              <span class="badge badge--success">Approved</span>
+              {% elif status in ['denied', 'cancelled', 'canceled'] %}
+              <span class="badge badge--danger">
+                {{ 'Cancelled' if status in ['cancelled','canceled'] else
+                'Denied' }}
+              </span>
+              {% elif status == 'logged' %}
+              <span class="badge">Logged</span>
+              {% elif status == 'pending' %}
+              <span class="badge badge--gold">Pending</span>
+              {% else %}
+              <span class="badge">{{ status|capitalize or 'Unknown' }}</span>
+              {% endif %} {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
         {% endfor %}
-      </tbody>
-    </table>
+      </div>
+      {% else %}
+      <div class="card card--loose">
+        <p class="muted">No pending requests right now.</p>
+      </div>
+      {% endif %}
 
-    <!-- Link back to user landing/dashboard page -->
-    <br />
-    <a href="/landing">&larr; Back to Dashboard</a>
+      <!-- Back -->
+      <div class="text-center">
+        <a href="{{ url_for('landing') }}" class="btn"> ← Back to Dashboard </a>
+      </div>
+    </div>
   </body>
 </html>

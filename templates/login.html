@@ -1,37 +1,251 @@
 <!--
   Template: login.html
-  Purpose: Render a simple user login form for authentication.
-  Accessible publicly; posts credentials to /login route (handles GET+POST).
+  Purpose: Styled login form that posts to /login (no functional changes).
+  Notes:
+    - Uses your shared style.css (gold/indigo brand variables + .btn).
+    - Dark theme via body.theme-dark for consistent colors.
+    - Keeps flashed messages, same field names, same POST target.
 -->
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Login</title>
-    <!-- TODO: Link to site-wide CSS for consistent form styling -->
+    <title>Login | Officer Access</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Brand + variables -->
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
+    <!-- Icons (for input adornments) -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <style>
+      /* Small page fade-in */
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .animate-fade-in {
+        animation: fadeIn 0.45s ease-out both;
+      }
+
+      /* Brand focus outline that matches your gold */
+      .brand-focus:focus {
+        border-color: var(--gold);
+        box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.25);
+        outline: none;
+      }
+
+      /* Password toggle hover effect */
+      .password-toggle {
+        cursor: pointer;
+        transition: color 0.15s ease;
+      }
+      .password-toggle:hover {
+        color: var(--gold-hover);
+      }
+
+      /* Header banner (subtle police vibe) */
+      .login-banner {
+        background: radial-gradient(
+            120% 140% at 110% -10%,
+            rgba(201, 162, 39, 0.25),
+            transparent 55%
+          ),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 35%),
+          linear-gradient(135deg, rgba(201, 162, 39, 0.08), transparent 40%),
+          #111827; /* slate-900 base */
+      }
+
+      /* Shield mark (simple inline SVG holder) */
+      .shield {
+        width: 56px;
+        height: 56px;
+        border-radius: 14px;
+        display: grid;
+        place-items: center;
+        background: rgba(201, 162, 39, 0.14);
+        border: 1px solid rgba(201, 162, 39, 0.35);
+        box-shadow: 0 6px 18px rgba(201, 162, 39, 0.22) inset,
+          0 4px 12px rgba(0, 0, 0, 0.35);
+      }
+
+      /* Compact toast fade-out */
+      #toast {
+        transition: opacity 0.4s ease;
+      }
+      #toast.fade-out {
+        opacity: 0;
+      }
+    </style>
   </head>
-  <body>
-    <!-- Page heading for login -->
-    <h2>Login</h2>
 
-    <!-- Login form: submits username and password via POST to /login -->
-    <form action="/login" method="POST">
-      <!-- Username field -->
-      <label for="username">Username:</label><br />
-      <input type="text" id="username" name="username" required /><br /><br />
+  <body
+    class="theme-dark min-h-screen bg-[var(--bg)] text-[var(--text)] flex items-center justify-center p-4"
+  >
+    <!-- Top-center flashed messages (if any) -->
+    {% with messages = get_flashed_messages(with_categories=true) %} {% if
+    messages %}
+    <div
+      id="toast"
+      class="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-md w-[calc(100%-2rem)] px-4 py-3 rounded-md shadow-lg bg-red-600 text-white text-sm"
+    >
+      {% for category, message in messages %}
+      <div>{{ message }}</div>
+      {% endfor %}
+    </div>
+    {% endif %} {% endwith %}
 
-      <!-- Password field -->
-      <label for="password">Password:</label><br />
-      <input
-        type="password"
-        id="password"
-        name="password"
-        required
-      /><br /><br />
+    <!-- Card -->
+    <div
+      class="w-full max-w-md animate-fade-in rounded-2xl overflow-hidden shadow-xl border border-[var(--border)] bg-[var(--surface)]"
+    >
+      <!-- Brand header -->
+      <div class="login-banner p-6 flex items-center gap-4">
+        <div class="shield">
+          <!-- minimal shield glyph -->
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            width="28"
+            height="28"
+            aria-hidden="true"
+          >
+            <path
+              d="M12 3c-1.5 1.4-3.7 2-6 2v6c0 4.9 3 9 6 10 3-1 6-5.1 6-10V5c-2.3 0-4.5-.6-6-2z"
+              stroke="currentColor"
+              stroke-width="1.5"
+              fill="rgba(201,162,39,0.35)"
+            />
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-xl font-bold text-white">Officer Access</h1>
+          <p class="text-xs text-indigo-200/80">
+            Secure sign-in for department personnel
+          </p>
+        </div>
+      </div>
 
-      <!-- Submit button -->
-      <input type="submit" value="Login" />
-    </form>
+      <!-- Secondary flashed messages inside card (kept for parity) -->
+      {% with messages = get_flashed_messages(with_categories=true) %} {% if
+      messages %}
+      <div class="px-6 pt-4">
+        {% for category, message in messages %}
+        <div
+          class="mb-3 px-3 py-2 rounded-md text-sm {% if category == 'error' %} bg-red-100 text-red-800 dark:bg-red-800/30 dark:text-red-200 border border-red-600/30 {% elif category == 'success' %} bg-green-100 text-green-800 dark:bg-green-800/30 dark:text-green-200 border border-green-600/30 {% else %} bg-gray-100 text-gray-800 dark:bg-gray-700/60 dark:text-gray-100 border border-gray-500/30 {% endif %}"
+        >
+          {{ message }}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %} {% endwith %}
+
+      <!-- Form -->
+      <form action="{{ url_for('login') }}" method="POST" class="p-6 space-y-5">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}" />
+        <!-- Username -->
+        <div>
+          <label
+            for="username"
+            class="block text-sm font-semibold text-[var(--text)]"
+            >Username</label
+          >
+          <div class="relative mt-1">
+            <input
+              id="username"
+              name="username"
+              type="text"
+              required
+              autocomplete="username"
+              placeholder="Badge # or ID"
+              class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] placeholder-[var(--muted)] px-4 py-2 brand-focus"
+            />
+            <div
+              class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none"
+            >
+              <i class="fas fa-user text-gray-400"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Password -->
+        <div>
+          <label
+            for="password"
+            class="block text-sm font-semibold text-[var(--text)]"
+            >Password</label
+          >
+          <div class="relative mt-1">
+            <input
+              id="password"
+              name="password"
+              type="password"
+              required
+              autocomplete="current-password"
+              placeholder="••••••••"
+              class="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] placeholder-[var(--muted)] px-4 py-2 brand-focus"
+            />
+            <div
+              class="absolute inset-y-0 right-0 pr-3 flex items-center password-toggle"
+              onclick="togglePasswordVisibility()"
+            >
+              <i id="toggle-icon" class="fas fa-eye text-gray-400"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Submit -->
+        <div>
+          <!-- Uses .btn from style.css for gold brand -->
+          <button type="submit" class="btn w-full hover:scale-[1.01]">
+            Login
+          </button>
+        </div>
+      </form>
+
+      <!-- Footer strip -->
+      <div class="px-6 pb-6 -mt-2">
+        <div class="text-[11px] text-[var(--muted)] text-center">
+          Authorized personnel only. Access is logged.
+        </div>
+      </div>
+    </div>
+
+    <!-- Scripts -->
+    <script>
+      function togglePasswordVisibility() {
+        const input = document.getElementById("password");
+        const icon = document.getElementById("toggle-icon");
+        if (input.type === "password") {
+          input.type = "text";
+          icon.classList.remove("fa-eye");
+          icon.classList.add("fa-eye-slash");
+        } else {
+          input.type = "password";
+          icon.classList.remove("fa-eye-slash");
+          icon.classList.add("fa-eye");
+        }
+      }
+
+      // Auto-dismiss top toast after 3.5s
+      setTimeout(() => {
+        const toast = document.getElementById("toast");
+        if (toast) {
+          toast.classList.add("fade-out");
+          setTimeout(() => toast.remove(), 400);
+        }
+      }, 3500);
+    </script>
   </body>
 </html>

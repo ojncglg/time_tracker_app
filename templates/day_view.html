@@ -1,49 +1,170 @@
 <!DOCTYPE html>
 <html lang="en">
-  <!--
-    Template: day_view.html
-    Purpose: Show detailed shift schedule and status per squad for a specific date.
-    Accessible from calendar daily links; provides links to edit user profiles.
-  -->
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Schedule for {{ date }}</title>
-    <!-- TODO: Add CSS for list styling and responsive layout -->
+    <title>{{ weekday_name }} — {{ date }} • Day View</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
   </head>
-  <body>
-    <!-- Main heading with the selected date -->
-    <h2>Schedule for {{ date }}</h2>
-
-    <!-- Loop through each squad and its members for the day -->
-    {% for squad, members in roster.items() %}
-    <!-- Squad header showing shift type (Day/Night/Off) -->
-    <h3>{{ squad }} Squad – {{ day_shifts[squad] }} Shift</h3>
-    <ul>
-      {% for user in members %}
-      <li>
-        <!-- Link to edit user profile in admin panel -->
-        <a href="/admin/edit-user/{{ user.username }}">
-          {{ user.rank }} {{ user.last_name }} ({{ user.call_sign }})
+  <body class="theme-dark min-h-screen">
+    <div class="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
+      <!-- Top Bar -->
+      <div class="flex items-center justify-between">
+        <a
+          href="{{ url_for('calendar_view', year=date[:4]|int, month=date[5:7]|int) }}"
+          class="text-sm underline"
+        >
+          ← Back to Calendar
         </a>
-        <br />
 
-        <!-- Display user details: squad, shift type, and times -->
-        Squad: {{ user.squad }}<br />
-        Shift Type: {{ user.shift_type }}<br />
-        Start Time: {{ user.start_time }}<br />
-        End Time: {{ user.end_time }}<br />
+        <div class="text-center">
+          <div class="text-xs tracking-wider muted uppercase">
+            {{ weekday_name }}
+          </div>
+          <h1 class="text-2xl font-bold">{{ date }}</h1>
+          {% if rotation_info %}
+          <div class="mt-1">
+            <span class="badge badge--gold text-[11px]"
+              >{{ rotation_info }}</span
+            >
+          </div>
+          {% endif %}
+        </div>
 
-        <!-- List user skills and current status -->
-        Skills: {{ user.skills | join(", ") }}<br />
-        Status: {{ user.status }}<br />
-      </li>
-      {% endfor %}
-    </ul>
-    {% endfor %}
+        <div class="flex items-center gap-2 text-xs">
+          <span class="badge">
+            <span
+              class="w-2 h-2 rounded-full bg-emerald-500 inline-block"
+            ></span>
+            Available
+          </span>
+          <span class="badge">
+            <span class="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
+            Sick
+          </span>
+          <span class="badge">
+            <span class="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+            Other
+          </span>
+        </div>
+      </div>
 
-    <!-- Navigation link back to the monthly calendar view -->
-    <br />
-    <a href="/calendar">&larr; Back to Calendar</a>
+      <!-- Squad Filter Tabs -->
+      <div class="flex flex-wrap items-center gap-2">
+        {% for tab in ['A','B','C','D','All'] %} {% set active = (tab ==
+        selected_squad) %}
+        <a
+          href="{{ url_for('view_day', date=date, squad=tab) }}"
+          class="px-3 py-1 rounded-full text-sm font-semibold border {% if active %} bg-[color:var(--gold)] text-black border-transparent {% else %} bg-[color:var(--surface)] text-[color:var(--text)] border-[color:var(--border)] hover:border-[color:var(--gold)] {% endif %}"
+        >
+          Squad {{ tab }}
+        </a>
+        {% endfor %}
+      </div>
+
+      <!-- Summary Cards -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="card card--tight rounded-xl">
+          <div class="text-xs muted">Available</div>
+          <div class="text-xl font-bold">{{ available_count }}</div>
+        </div>
+        {% for unit in ['K9','SWAT','EOD','UAS','CIT','VRT','CNT'] %}
+        <div class="card card--tight rounded-xl">
+          <div class="text-xs muted">{{ unit }} (Avail.)</div>
+          <div class="text-xl font-bold">{{ unit_counts[unit] }}</div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Shift Summary Bar -->
+      <div class="card card--tight rounded-xl">
+        <div class="text-sm font-semibold mb-2">Shift Summary</div>
+        <div class="grid grid-cols-4 gap-2 text-xs">
+          {% for s in ['A','B','C','D'] %} {% set label = day_shifts.get(s,
+          'Off') %}
+          <div class="p-2 rounded border border-[color:var(--border)]">
+            <div class="font-semibold">Squad {{ s }}</div>
+            <div class="muted">{{ label }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Supervisors -->
+      <div class="card card--loose rounded-xl">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-sm font-semibold">Supervisors</div>
+          <div class="text-xs muted">{{ supervisors|length }} total</div>
+        </div>
+        {% if supervisors %}
+        <div class="table-like">
+          {% for u in supervisors %}
+          <div class="row p-2">
+            <div>
+              <div class="font-semibold">
+                {{ u.first_name }} {{ u.last_name }}
+              </div>
+              <div class="text-xs muted">{{ u.rank }}</div>
+            </div>
+            <div class="text-xs self-center">{{ u.call_sign }}</div>
+            <div class="text-xs self-center">
+              <span
+                class="status-box status-{{ u.status|default('Available') }}"
+                >{{ u.status|default('Available') }}</span
+              >
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-sm muted">
+          No supervisors scheduled for the selected squad.
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Zones (1..9 + Other) -->
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        {% set zones = (['1','2','3','4','5','6','7','8','9','Other']) %} {% for
+        z in zones %} {% set members = by_zone.get(z, []) %}
+        <div class="card card--loose rounded-xl">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-sm font-semibold">Zone {{ z }}</div>
+            <div class="text-xs muted">{{ members|length }} assigned</div>
+          </div>
+
+          {% if members %}
+          <div class="table-like">
+            {% for u in members %}
+            <div class="row p-2">
+              <div>
+                <div class="font-semibold">
+                  {{ u.first_name }} {{ u.last_name }}
+                </div>
+                <div class="text-xs muted">{{ u.rank }}</div>
+              </div>
+              <div class="text-xs self-center">{{ u.call_sign }}</div>
+              <div class="text-xs self-center">
+                <span
+                  class="status-box status-{{ u.status|default('Available') }}"
+                  >{{ u.status|default('Available') }}</span
+                >
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="text-sm muted">
+            No officers in this zone for the selected squad.
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
   </body>
 </html>
