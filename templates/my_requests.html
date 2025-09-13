@@ -126,6 +126,41 @@
         My Requests ({{ current_year }})
       </h3>
 
+      <!-- Filter Form (personal history) -->
+      <form method="get" class="mb-4 bg-white/5 dark:bg-gray-800 rounded-lg p-4 flex flex-wrap gap-4 items-end">
+        <div>
+          <label for="type" class="block text-xs font-semibold mb-1 text-gray-300">Type</label>
+          <select id="type" name="type" class="form-input block w-36 bg-gray-900 border border-gray-700 text-gray-200 rounded">
+            <option value="">All</option>
+            <option value="vacation" {% if q_type == 'vacation' %}selected{% endif %}>Vacation</option>
+            <option value="sick" {% if q_type == 'sick' %}selected{% endif %}>Sick</option>
+          </select>
+        </div>
+        <div>
+          <label for="status" class="block text-xs font-semibold mb-1 text-gray-300">Status</label>
+          <select id="status" name="status" class="form-input block w-40 bg-gray-900 border border-gray-700 text-gray-200 rounded">
+            <option value="">All</option>
+            <option value="pending" {% if q_status == 'pending' %}selected{% endif %}>Pending</option>
+            <option value="approved" {% if q_status == 'approved' %}selected{% endif %}>Approved</option>
+            <option value="denied" {% if q_status == 'denied' %}selected{% endif %}>Denied</option>
+            <option value="cancelled" {% if q_status in ['cancelled', 'canceled'] %}selected{% endif %}>Cancelled</option>
+            <option value="logged" {% if q_status == 'logged' %}selected{% endif %}>Logged</option>
+          </select>
+        </div>
+        <div>
+          <label for="date_from" class="block text-xs font-semibold mb-1 text-gray-300">Date From</label>
+          <input type="date" id="date_from" name="date_from" value="{{ q_date_from or '' }}" class="form-input block w-40 bg-gray-900 border border-gray-700 text-gray-200 rounded" />
+        </div>
+        <div>
+          <label for="date_to" class="block text-xs font-semibold mb-1 text-gray-300">Date To</label>
+          <input type="date" id="date_to" name="date_to" value="{{ q_date_to or '' }}" class="form-input block w-40 bg-gray-900 border border-gray-700 text-gray-200 rounded" />
+        </div>
+        <div class="flex gap-2 mt-4 md:mt-0">
+          <button type="submit" class="btn btn--primary">Apply Filters</button>
+          <a href="{{ url_for('my_requests') }}" class="btn btn--secondary">Reset</a>
+        </div>
+      </form>
+
       <!-- Semantic table for accessibility; head defines column labels -->
       <!-- Requests table (ungrouped; one row per day/request) -->
       <div

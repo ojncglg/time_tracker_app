@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+  <!--
+  Template: supervisor_day_status.html
+  Purpose: Supervisors set per-day status for officers over a date range.
+  NOTE: Temporary standalone layout because base.html was not found by Jinja.
+        This mirrors landing.html style tokens (Tailwind + style.css + theme-dark).
+        Once the base layout path is confirmed, replace this standalone file with a template that:
+          - extends your base template (e.g., "layouts/base.html")
+          - defines a content block for page markup
+          - defines a scripts block for page-specific JS
+-->
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Set Day Status</title>
+    <!-- Tailwind CDN (mirrors landing.html usage) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Project styles: defines card, btn, muted, admin-banner, animations, etc. -->
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
+  </head>
+  <body class="theme-dark min-h-screen">
+    <!-- =========================
+       Page container (matches landing spacing + animation)
+       ========================= -->
+    <div class="max-w-5xl mx-auto px-4 py-12 animate-fade-in">
+      <!-- =========================
+         Unified toast notifications
+         ========================= -->
+      {% include '_toasts.html' %}
+      <div class="max-w-3xl mx-auto">
+        <!-- Page header -->
+        <div class="text-center mb-8">
+          <h2 class="text-4xl font-bold tracking-tight text-white">
+            Set Day Status
+          </h2>
+          <p class="mt-2 text-sm muted">
+            Future dates only (next {{ max_forward_days }} days). Choose
+            <em>Available</em> to clear status.
+          </p>
+        </div>
+
+        <div class="card card--loose">
+          <form
+            method="POST"
+            action="{{ url_for('day_status') }}"
+            class="space-y-6"
+          >
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}" />
+
+            <!-- Officer -->
+            <div>
+              <label class="block text-sm font-medium mb-1" for="username"
+                >Officer</label
+              >
+              <select id="username" name="username" required class="form-input">
+                <option value="" disabled selected>Select officer…</option>
+                {% for o in officers %}
+                <option value="{{ o.username }}">{{ o.label }}</option>
+                {% endfor %}
+              </select>
+              <p class="text-xs muted mt-1">
+                Only officers within your squad are listed (admins see all).
+              </p>
+            </div>
+
+            <!-- Date range -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium mb-1" for="date"
+                  >Start date</label
+                >
+                <input
+                  id="date"
+                  name="date"
+                  type="date"
+                  required
+                  class="form-input"
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-medium mb-1" for="end_date"
+                  >End date
+                  <span class="muted">(optional)</span>
+                </label>
+                <input
+                  id="end_date"
+                  name="end_date"
+                  type="date"
+                  class="form-input"
+                />
+                <p class="text-xs muted mt-1">
+                  If left blank, only the start date is updated.
+                </p>
+              </div>
+            </div>
+
+            <!-- Status -->
+            <div>
+              <label class="block text-sm font-medium mb-1" for="status"
+                >Status</label
+              >
+              <select id="status" name="status" required class="form-input">
+                <option value="Available">Available (clear)</option>
+                {% for s in allowed_statuses %}
+                <option value="{{ s }}">{{ s }}</option>
+                {% endfor %}
+              </select>
+              <p class="text-xs muted mt-1">
+                Vacation/Sick conflicts are skipped. Choose
+                <em>Available</em> to clear a prior status.
+              </p>
+              <!-- Optional note for audit trail -->
+              <div class="mt-4">
+                <label class="block text-sm font-medium mb-1" for="note"
+                  >Note <span class="muted">(optional)</span></label
+                >
+                <textarea
+                  id="note"
+                  name="note"
+                  rows="2"
+                  class="form-input"
+                  placeholder="Reason or context for this change (kept in audit log)"
+                ></textarea>
+              </div>
+            </div>
+
+            <!-- =========================
+                 Preview: List + Mini Calendar
+                 Shows current statuses for the selected officer and date range,
+                 highlights what will change, and which days will be skipped
+                 ========================= -->
+            <div class="mt-6">
+              <h3 class="text-sm font-semibold text-white">Preview</h3>
+              <p class="text-xs muted mt-1">
+                Select officer, start/end dates, and status to see what will
+                change.
+              </p>
+
+              <!-- Tabs -->
+              <div class="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  id="tab-list"
+                  class="btn btn--secondary text-xs"
+                >
+                  List
+                </button>
+                <button
+                  type="button"
+                  id="tab-cal"
+                  class="btn btn--secondary text-xs"
+                >
+                  Mini calendar
+                </button>
+              </div>
+
+              <!-- List view -->
+              <div id="preview-list" class="mt-3 card">
+                <div id="preview-list-body" class="p-3 text-sm">
+                  <div class="muted">No preview yet.</div>
+                </div>
+              </div>
+
+              <!-- Mini calendar view -->
+              <div id="preview-cal" class="mt-3 card hidden">
+                <div id="preview-cal-body" class="p-3">
+                  <div class="muted text-sm">No preview yet.</div>
+                </div>
+                <div class="px-3 pb-3">
+                  <div class="text-xs muted">
+                    <span
+                      class="inline-block w-3 h-3 align-middle mr-1"
+                      style="background: var(--gold)"
+                    ></span>
+                    Current non-available &nbsp;&nbsp;
+                    <span
+                      class="inline-block w-3 h-3 align-middle mr-1"
+                      style="background: rgba(79, 70, 229, 0.6)"
+                    ></span>
+                    Selected range &nbsp;&nbsp;
+                    <span
+                      class="inline-block w-3 h-3 align-middle mr-1"
+                      style="background: rgba(220, 38, 38, 0.6)"
+                    ></span>
+                    Skipped (vacation/sick)
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-6 flex items-center justify-between">
+              <button id="apply-btn" type="submit" class="btn btn--primary">
+                Apply
+              </button>
+            </div>
+          </form>
+          <div class="mt-4 text-center">
+            <a
+              href="{{ url_for('landing') }}"
+              class="text-red-500 font-semibold hover:underline"
+            >
+              Back to Dashboard
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      (function () {
+        const start = document.getElementById('date');
+        const end = document.getElementById('end_date');
+        const officer = document.getElementById('username');
+        const statusSel = document.getElementById('status');
+        const note = document.getElementById('note');
+        const applyBtn = document.getElementById('apply-btn');
+
+        const tabListBtn = document.getElementById('tab-list');
+        const tabCalBtn = document.getElementById('tab-cal');
+        const previewList = document.getElementById('preview-list');
+        const previewCal = document.getElementById('preview-cal');
+        const listBody = document.getElementById('preview-list-body');
+        const calBody = document.getElementById('preview-cal-body');
+
+        if (!start || !end) return;
+
+        // Helper: format Date → 'YYYY-MM-DD'
+        function fmt(d) {
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${y}-${m}-${day}`;
+        }
+
+        // Today (local)
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Max = today + max_forward_days (from server context)
+        const maxForward = Number({{ max_forward_days | int }}) || 0;
+        const maxDate = new Date(today);
+        maxDate.setDate(maxDate.getDate() + maxForward);
+
+        // Apply initial min/max
+        start.min = fmt(today);
+        start.max = fmt(maxDate);
+        end.min = start.value ? start.value : fmt(today);
+        end.max = fmt(maxDate);
+
+        // Keep end >= start
+        start.addEventListener('change', () => {
+          if (!start.value) return;
+          end.min = start.value;
+          if (end.value && end.value < start.value) {
+            end.value = start.value;
+          }
+          triggerPreview();
+        });
+        end.addEventListener('change', triggerPreview);
+        officer.addEventListener('change', triggerPreview);
+        statusSel.addEventListener('change', triggerPreview);
+
+        // Tabs
+        function showList() {
+          previewList.classList.remove('hidden');
+          previewCal.classList.add('hidden');
+        }
+        function showCal() {
+          previewCal.classList.remove('hidden');
+          previewList.classList.add('hidden');
+        }
+        tabListBtn && tabListBtn.addEventListener('click', showList);
+        tabCalBtn && tabCalBtn.addEventListener('click', showCal);
+
+        // Submit lock
+        const form = document.querySelector('form[action="{{ url_for("day_status") }}"]');
+        if (form && applyBtn) {
+          form.addEventListener('submit', () => {
+            applyBtn.disabled = true;
+            applyBtn.textContent = 'Applying...';
+            // Allow server to re-enable via full page reload/toast
+          });
+        }
+
+        // Build querystring safely
+        function qs(params) {
+          return Object.entries(params)
+            .filter(([, v]) => v !== undefined && v !== null && v !== '')
+            .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+            .join('&');
+        }
+
+        // Render list preview
+        function renderList(items) {
+          if (!items || !items.length) {
+            listBody.innerHTML = '<div class="muted">No preview yet.</div>';
+            return;
+          }
+          const rows = items.map(it => {
+            const badgeBase = 'inline-block px-2 py-0.5 rounded text-xs';
+            let badgeClass = 'bg-gray-700 text-gray-200';
+            if (it.reason === 'vacation' || it.reason === 'sick') {
+              badgeClass = 'bg-red-900 text-red-300';
+            } else if (it.will_change) {
+              badgeClass = 'bg-indigo-800 text-indigo-200';
+            } else if (it.current_status && it.current_status !== 'Available') {
+              badgeClass = 'bg-yellow-800 text-yellow-200';
+            }
+            const reason = it.reason ? ` <span class="muted">(${it.reason})</span>` : '';
+            return `<div class="flex items-center justify-between border-b border-gray-700/50 py-1">
+              <span class="text-sm">${it.date}</span>
+              <span class="${badgeBase} ${badgeClass}">
+                ${it.will_change ? 'will update' : 'no change'}
+              </span>
+              <span class="text-xs muted">${it.current_status || 'Available'}${reason}</span>
+            </div>`;
+          }).join('');
+          listBody.innerHTML = rows;
+        }
+
+        // Render mini calendar (very small: 14 days starting at start date or today)
+        function renderCal(items) {
+          if (!items || !items.length) {
+            calBody.innerHTML = '<div class="muted text-sm">No preview yet.</div>';
+            return;
+          }
+          // Build a 14-day window starting from start date (or today if no start)
+          const base = start.value ? new Date(start.value) : new Date();
+          base.setHours(0,0,0,0);
+          const days = [];
+          for (let i=0; i<14; i++) {
+            const d = new Date(base);
+            d.setDate(base.getDate()+i);
+            const iso = fmt(d);
+            const match = items.find(it => it.date === iso);
+            days.push({ iso, match });
+          }
+          const cells = days.map(({iso, match}) => {
+            let bg = 'bg-gray-800';
+            if (match) {
+              if (match.reason === 'vacation' || match.reason === 'sick') bg = 'bg-red-900';
+              else if (match.will_change) bg = 'bg-indigo-900';
+              else if (match.current_status && match.current_status !== 'Available') bg = 'bg-yellow-900';
+            }
+            return `<div class="p-2 ${bg} rounded text-center">
+              <div class="text-xs">${iso.slice(5)}</div>
+            </div>`;
+          }).join('');
+          calBody.innerHTML = `<div class="grid grid-cols-7 gap-2">${cells}</div>`;
+        }
+
+        // Trigger preview via lightweight JSON endpoint
+        async function triggerPreview() {
+          if (!officer.value || !start.value) {
+            listBody.innerHTML = '<div class="muted">Select officer and dates to preview.</div>';
+            calBody.innerHTML = '<div class="muted text-sm">Select officer and dates to preview.</div>';
+            return;
+          }
+          const params = {
+            username: officer.value,
+            start_date: start.value,
+            end_date: end.value || start.value,
+            status: statusSel.value || ''
+          };
+          try {
+            const res = await fetch(`/day-status/preview?${qs(params)}`, { headers: { 'Accept': 'application/json' }});
+            if (!res.ok) throw new Error('Preview failed');
+            const data = await res.json();
+            renderList(data || []);
+            renderCal(data || []);
+          } catch (e) {
+            listBody.innerHTML = '<div class="text-red-400 text-sm">Preview unavailable.</div>';
+            calBody.innerHTML = '<div class="text-red-400 text-sm">Preview unavailable.</div>';
+          }
+        }
+      })();
+    </script>
+  </body>
+</html>

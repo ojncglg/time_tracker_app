@@ -66,6 +66,8 @@ from flask import (
     session,
     flash,
     url_for,
+    jsonify,
+    Blueprint,
 )
 
 
@@ -81,10 +83,17 @@ from request_log import request_log, log_request, get_request_log
 # =========================
 # Config & Constants
 # =========================
+# Resolve data files relative to this app.py so cwd changes don't break loads
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = BASE_DIR  # keep data files alongside app.py; change to subfolder if desired
 # File paths for simple, human-auditable data stores (no DB needed)
-USERS_FILE = "users.json"          # Persistent store for user profiles
-SHIFTS_FILE = "shifts.json"        # Daily squad shift assignments
-STATUS_FILE = "status_log.json"    # Per-date per-user availability overrides (e.g., Sick)
+USERS_FILE = os.path.join(DATA_DIR, "users.json")          # Persistent store for user profiles
+SHIFTS_FILE = os.path.join(DATA_DIR, "shifts.json")        # Daily squad shift assignments
+STATUS_FILE = os.path.join(DATA_DIR, "status_log.json")    # Per-date per-user availability overrides (e.g., Sick)
+
+TRAINING_DAYS_FILE = os.path.join(DATA_DIR, "training_days.json")  # NCCPD training day assignments (separate store)
+TOW_LOG_FILE = os.path.join(DATA_DIR, "tow_log.json")  # Public tow submissions (append-only)
+TOW_COMPANIES_FILE = os.path.join(DATA_DIR, "tow_companies.json")  # Allow-list of valid tow companies (id -> {name, active})
 
 # Role names used by @require_role() (string matching; keep stable)
 ROLES: List[str] = ["user", "supervisor", "admin", "webmaster"]
@@ -94,13 +103,314 @@ ALL_CHOICE = "All"
 SUPERVISOR_RANKS = {"Senior Sergeant", "Sergeant", "Lieutenant", "Senior Lieutenant"}
 SPECIAL_UNITS = ["K9", "SWAT", "EOD", "UAS", "CIT", "VRT", "CNT"]
 STATUS_BUCKETS = ["Vacation", "Sick", "FMLA", "TDY", "Training", "Admin Leave", "Other"]
+MAX_FORWARD_DAYS = 30  # supervisor tool forward-date cap (UI + server)
+# =========================
+# Flask App Setup (moved earlier so decorators can bind)
+# =========================
+app = Flask(__name__)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "supersecretkey")
+
+# --- Blueprint: Tow Log ----------------------------------------------------
+# Phase 1: Keep in this file to minimize risk; later we can move to blueprints/tow.py
+# without changing behavior.
+# (Blueprint removed; reverting to plain @app.route for Tow endpoints)
+
+# =========================
+# Access Control (moved earlier to satisfy decorator ordering)
+# =========================
+def require_role(*roles: str):
+    """
+    Decorator: require any of `roles` to access a route.
+    Supervisors may access a small whitelist of admin tools for operational tasks.
+    - On failure: flash + redirect to /login (consistent with current UX).
+    """
+    SUPERVISOR_ADMIN_WHITELIST = {
+        "edit_user",       # Edit profile form
+        "archive_user",    # Archive button
+        "unarchive_user",  # Unarchive button
+        "adjust_vacation", # Vacation balance adjust
+        "adjust_sick",     # Sick balance adjust
+        "set_password",    # Set/Reset password
+        "admin_requests",  # Admin Requests page (list)
+        "handle_request",  # Approve/Deny action
+        "create_user",     # Create new user (alias to add_user)
+    }
+
+    def decorator(view_fn):
+        @wraps(view_fn)
+        def wrapped(*args, **kwargs):
+            username = get_current_username()
+            if not username:
+                flash("Please log in.", "warning")
+                return redirect(url_for("login"))
+            try:
+                all_users = load_users()
+            except Exception:
+                flash("Temporary error loading users. Please log in again.", "error")
+                return redirect(url_for("login"))
+
+            user = all_users.get(username) or {}
+            user_role = user.get("role")
+
+            # Direct allow if role is explicitly permitted
+            if user_role in roles:
+                return view_fn(*args, **kwargs)
+
+            # Supervisor uplift: allow selected admin/webmaster endpoints
+            if user_role == "supervisor" and (("admin" in roles) or ("webmaster" in roles)):
+                endpoint = (request.endpoint or "").split(":")[-1]  # handle blueprints
+                if endpoint in SUPERVISOR_ADMIN_WHITELIST:
+                    return view_fn(*args, **kwargs)
+
+            # Otherwise, block
+            flash("Access denied. Insufficient privileges.", "error")
+            return redirect(url_for("login"))
+
+        return wrapped
+    return decorator
+
+@app.errorhandler(403)
+def handle_403(e):
+    """Normalize 403s to a friendly message + login redirect."""
+    flash("Access denied.", "error")
+    return redirect(url_for("login"))
+
+# =========================
+# Supervisor Tool: Set Day Status (supports clearing)
+# =========================
+# (Moved here after require_role and app setup)
+
+
+# =========================
+# Supervisor Tool: Set Day Status (supports clearing)
+# =========================
+@app.route("/supervisor/day-status", methods=["GET", "POST"], endpoint="day_status")
+@require_role("supervisor", "admin", "webmaster")
+def supervisor_day_status():
+    """
+    Supervisors set per-day status for officers in their own squad; Admin/Webmaster can set for anyone.
+    - Allowed statuses (non-protected): FMLA, TDY, Training, Field Training, Admin Leave, Other.
+    - Clearing sets a day back to 'Available' (but never clears Vacation/Sick).
+    - Date scope: future only, within next MAX_FORWARD_DAYS.
+    """
+    # Load context
+    all_users = load_users()
+    actor_username = get_current_username()
+    if not actor_username:
+        return redirect(url_for("login"))
+    actor = all_users.get(actor_username, {})
+    actor_role = actor.get("role", "user")
+    actor_squad = actor.get("squad")
+    allowed_statuses = ["FMLA", "TDY", "Training", "Field Training", "Admin Leave", "Other"]
+    # Officer choices (squad-scoped for supervisors)
+    officers = []
+    for uname, u in all_users.items():
+        if not is_user_active(u):
+            continue
+        if actor_role == "supervisor" and u.get("squad") != actor_squad:
+            continue
+        label = f"{u.get('last_name','')}, {u.get('first_name','')} — {uname}"
+        officers.append({"username": uname, "label": label})
+    officers.sort(key=lambda x: x["label"].lower())
+
+    if request.method == "GET":
+        return render_template(
+            "supervisor_day_status.html",
+            officers=officers,
+            allowed_statuses=allowed_statuses,
+            max_forward_days=MAX_FORWARD_DAYS,
+        )
+
+    # POST
+    username = (request.form.get("username") or "").strip()
+    start_str = (request.form.get("date") or "").strip()
+    end_str = (request.form.get("end_date") or "").strip()
+    status_req = (request.form.get("status") or "").strip()
+    note = (request.form.get("note") or "").strip()
+
+    if not username or not start_str:
+        flash("Please select an officer and a start date.", "error")
+        return redirect(url_for("day_status"))
+
+    target_user = all_users.get(username)
+    if not target_user:
+        flash("Selected officer not found.", "error")
+        return redirect(url_for("day_status"))
+    if actor_role == "supervisor" and target_user.get("squad") != actor_squad:
+        flash("Access denied: supervisors can only update their own squad.", "error")
+        return redirect(url_for("day_status"))
+
+    try:
+        start_dt = datetime.strptime(start_str, "%Y-%m-%d").date()
+    except Exception:
+        flash("Invalid start date.", "error")
+        return redirect(url_for("day_status"))
+
+    if end_str:
+        try:
+            end_dt = datetime.strptime(end_str, "%Y-%m-%d").date()
+        except Exception:
+            end_dt = start_dt
+    else:
+        end_dt = start_dt
+    if end_dt < start_dt:
+        end_dt = start_dt
+
+    today = date.today()
+    max_day = today + timedelta(days=int(MAX_FORWARD_DAYS))
+    if start_dt < today or end_dt > max_day:
+        flash(f"Dates must be between {today.isoformat()} and {max_day.isoformat()}.", "error")
+        return redirect(url_for("day_status"))
+
+    if status_req != "Available" and status_req not in allowed_statuses:
+        flash("Invalid status selection.", "error")
+        return redirect(url_for("day_status"))
+
+    # Build date list
+    dates = []
+    cur = start_dt
+    while cur <= end_dt:
+        dates.append(cur.strftime("%Y-%m-%d"))
+        cur += timedelta(days=1)
+
+    status_log = load_status_log()
+    PROTECTED = {"Vacation", "Sick"}
+    updated = 0
+    skipped = 0
+
+    for ds in dates:
+        cur_map = status_log.setdefault(ds, {})
+        current = (cur_map.get(username) or "Available").strip()
+        if current in PROTECTED:
+            skipped += 1
+            continue
+        if status_req == "Available":
+            if current != "Available":
+                cur_map[username] = "Available"
+                updated += 1
+            else:
+                skipped += 1
+            continue
+        if current == status_req:
+            skipped += 1
+            continue
+        cur_map[username] = status_req
+        updated += 1
+
+    save_status_log(status_log)
+
+    try:
+        audit_append(
+            all_users,
+            target_username=username,
+            action="supervisor_day_status_update",
+            details={
+                "range": {"start": start_str, "end": end_str or start_str},
+                "status": status_req,
+                "updated": updated,
+                "skipped": skipped,
+                "note": note,
+            },
+            save_immediately=True,
+        )
+    except Exception:
+        pass
+
+    if updated and not skipped:
+        flash(f"Updated {updated} day(s).", "success")
+    elif updated and skipped:
+        flash(f"Updated {updated} day(s). Skipped {skipped} due to conflicts or no change.", "success")
+    else:
+        flash("No changes applied (all days were protected or already matched).", "warning")
+
+    return redirect(url_for("day_status"))
+
+# =========================
+# Supervisor Tool: Live Preview (JSON)
+# =========================
+@app.route("/day-status/preview")
+def day_status_preview():
+    """
+    Return a JSON preview of what would change for a proposed supervisor day-status update.
+    Query params: username, start_date, end_date (optional), status
+    Output: list of {date, current_status, will_change: bool, reason: 'vacation'|'sick'|'none'|'same'}
+    """
+    all_users = load_users()
+    actor_username = get_current_username()
+    actor = all_users.get(actor_username, {}) if actor_username else {}
+    actor_role = actor.get("role", "user")
+    actor_squad = actor.get("squad")
+    if not actor_username or actor_role not in {"supervisor", "admin", "webmaster"}:
+        return jsonify([])
+
+    username = (request.args.get("username") or "").strip()
+    start_str = (request.args.get("start_date") or "").strip()
+    end_str = (request.args.get("end_date") or "").strip() or start_str
+    status_req = (request.args.get("status") or "").strip() or "Available"
+
+    target = all_users.get(username)
+    if not target:
+        return jsonify([])
+    if actor_role == "supervisor" and target.get("squad") != actor_squad:
+        return jsonify([])
+
+    try:
+        start_dt = datetime.strptime(start_str, "%Y-%m-%d").date()
+        end_dt = datetime.strptime(end_str, "%Y-%m-%d").date()
+    except Exception:
+        return jsonify([])
+
+    if end_dt < start_dt:
+        end_dt = start_dt
+
+    today = date.today()
+    max_day = today + timedelta(days=int(MAX_FORWARD_DAYS))
+    if start_dt < today:
+        start_dt = today
+    if end_dt > max_day:
+        end_dt = max_day
+
+    allowed_statuses = {"FMLA", "TDY", "Training", "Field Training", "Admin Leave", "Other", "Available"}
+    if status_req not in allowed_statuses:
+        status_req = "Available"
+    PROTECTED = {"Vacation", "Sick"}
+
+    status_log = load_status_log()
+    out = []
+    cur = start_dt
+    while cur <= end_dt:
+        ds = cur.strftime("%Y-%m-%d")
+        current = (status_log.get(ds, {}).get(username) or "Available").strip()
+        reason = "none"
+        will_change = False
+
+        if current in PROTECTED:
+            reason = current.lower()
+            will_change = False
+        else:
+            if status_req == "Available":
+                will_change = (current != "Available")
+                if not will_change:
+                    reason = "same"
+            else:
+                will_change = (current != status_req)
+                if not will_change:
+                    reason = "same"
+
+        out.append({
+            "date": ds,
+            "current_status": current if current else "Available",
+            "will_change": bool(will_change),
+            "reason": reason,
+        })
+        cur += timedelta(days=1)
+
+    return jsonify(out)
 
 # Numeric user fields we parse/serialize as floats in forms
 USER_NUMERIC_FIELDS = {"vacation_left", "vacation_used_today", "sick_left", "sick_used_ytd"}
 
-# Flask app setup (secret key falls back to dev default if env var not set)
-app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "supersecretkey")
+ # (app setup moved earlier to satisfy decorator ordering)
 
 
  
@@ -163,6 +473,36 @@ def load_status_log() -> Dict[str, Dict[str, str]]:
 def save_status_log(status_log: Dict[str, Dict[str, str]]) -> None:
     """Persist status overrides to disk."""
     _write_json(STATUS_FILE, status_log)
+
+
+def load_training_days() -> List[Dict[str, Any]]:
+    """Load training day entries list (each entry is a dict)."""
+    return _read_json(TRAINING_DAYS_FILE, default=[])
+
+def save_training_days(entries: List[Dict[str, Any]]) -> None:
+    """Persist training day entries to disk."""
+    _write_json(TRAINING_DAYS_FILE, entries)
+
+
+def load_tow_log() -> List[Dict[str, Any]]:
+    """Load Tow Log entries (append-only list)."""
+    return _read_json(TOW_LOG_FILE, default=[])
+
+
+def save_tow_log(entries: List[Dict[str, Any]]) -> None:
+    """Persist Tow Log entries to disk."""
+    _write_json(TOW_LOG_FILE, entries)
+
+
+def load_tow_companies() -> Dict[str, Dict[str, Any]]:
+    """Load allow-listed tow companies keyed by numeric id as string. Missing file -> {}."""
+    try:
+        data = _read_json(TOW_COMPANIES_FILE, default={})
+        if isinstance(data, dict):
+            return {str(k): (v or {}) for k, v in data.items()}
+        return {}
+    except Exception:
+        return {}
 
 
  
@@ -590,70 +930,7 @@ def diff_fields(before: Dict[str, Any], after: Dict[str, Any], fields: List[str]
 
 
  
-# =========================
-# Access Control
-# =========================
-# Security model note:
-# - We keep auth simple: role is stored in session after login and checked
-#   on each protected route via this decorator. If JSON stores are unreadable
-#   or missing, we fail closed (redirect to login) rather than raising.
-def require_role(*roles: str):
-    """
-    Decorator: require any of `roles` to access a route.
-    Supervisors may access a small whitelist of admin tools for operational tasks.
-    - On failure: flash + redirect to /login (consistent with current UX).
-    """
-    SUPERVISOR_ADMIN_WHITELIST = {
-        "edit_user",       # Edit profile form
-        "archive_user",    # Archive button
-        "unarchive_user",  # Unarchive button
-        "adjust_vacation", # Vacation balance adjust
-        "adjust_sick",     # Sick balance adjust
-        "set_password",    # Set/Reset password
-        "admin_requests",  # Admin Requests page (list)
-        "handle_request",  # Approve/Deny action
-        "create_user",     # Create new user (alias to add_user)
-    }
-
-    def decorator(view_fn):
-        @wraps(view_fn)
-        def wrapped(*args, **kwargs):
-            username = get_current_username()
-            if not username:
-                flash("Please log in.", "warning")
-                return redirect(url_for("login"))
-            try:
-                all_users = load_users()
-            except Exception:
-                flash("Temporary error loading users. Please log in again.", "error")
-                return redirect(url_for("login"))
-
-            user = all_users.get(username) or {}
-            user_role = user.get("role")
-
-            # Direct allow if role is explicitly permitted
-            if user_role in roles:
-                return view_fn(*args, **kwargs)
-
-            # Supervisor uplift: allow selected admin/webmaster endpoints
-            if user_role == "supervisor" and (("admin" in roles) or ("webmaster" in roles)):
-                endpoint = (request.endpoint or "").split(":")[-1]  # handle blueprints
-                if endpoint in SUPERVISOR_ADMIN_WHITELIST:
-                    return view_fn(*args, **kwargs)
-
-            # Otherwise, block
-            flash("Access denied. Insufficient privileges.", "error")
-            return redirect(url_for("login"))
-
-        return wrapped
-    return decorator
-
-
-@app.errorhandler(403)
-def handle_403(e):
-    """Normalize 403s to a friendly message + login redirect."""
-    flash("Access denied.", "error")
-    return redirect(url_for("login"))
+# (require_role and 403 handler defined earlier to satisfy decorator ordering)
 
 
 @app.before_request
@@ -690,6 +967,11 @@ def _inject_csrf_token():
 # =========================
 # Archive Enforcement
 # =========================
+
+# --- Register blueprints ----------------------------------------------------
+# Keep registration near app setup so it’s obvious and runs early.
+# app.register_blueprint(tow_bp)  # moved to end (after tow routes are defined)
+
 @app.before_request
 def _enforce_active_user():
     """
@@ -1120,6 +1402,34 @@ def my_requests():
                 }
             )
 
+    # --- Optional filters for personal history (GET params) ---
+    f_type = (request.args.get("type") or "").strip().lower()      # vacation|sick
+    f_status = (request.args.get("status") or "").strip().lower()  # pending|approved|denied|cancelled|logged
+    f_from = _parse_iso_date(request.args.get("date_from"))
+    f_to = _parse_iso_date(request.args.get("date_to"))
+
+    def _row_date_ok(ds: str) -> bool:
+        try:
+            d = datetime.strptime(ds, "%Y-%m-%d").date()
+        except Exception:
+            return False
+        if f_from and d < f_from:
+            return False
+        if f_to and d > f_to:
+            return False
+        return True
+
+    def _row_ok(r: Dict[str, Any]) -> bool:
+        if f_type and (r.get("type", "").strip().lower() != f_type):
+            return False
+        if f_status and (r.get("status", "").strip().lower() != f_status):
+            return False
+        if (f_from or f_to) and (not _row_date_ok(r.get("start_date", ""))):
+            return False
+        return True
+
+    if f_type or f_status or f_from or f_to:
+        rows = [r for r in rows if _row_ok(r)]
     # Sort newest first
     def _key(row: Dict[str, Any]) -> datetime:
         """
@@ -1147,13 +1457,116 @@ def my_requests():
         # Flat list for the table:
         current_date=current_date,
         rows=rows,
+        # Echo filters back for form stickiness
+        q_type=f_type,
+        q_status=f_status,
+        q_date_from=(request.args.get("date_from") or ""),
+        q_date_to=(request.args.get("date_to") or ""),
     )
 
 
  
-# =========================
-# Auth & Landing
-# =========================
+@app.route("/tow-log", methods=["GET", "POST"], endpoint="tow_log")
+def tow_log():
+    """
+    Public Tow Log submission page for tow operators.
+    Expected form fields (template):
+      - company_id (required, integer; must exist & be active in allow-list)
+      - location (required)
+      - time_iso (optional; default now if blank)
+      - make, model (optional)
+      - tag (required; 'NO TAG' accepted; stored uppercase)
+      - vin (optional; max 17)
+      - reason (optional; <=300 chars)
+      - website (honeypot; if filled, ignore submission)
+    """
+    if request.method == "POST":
+        # CSRF (presence check consistent with app pattern)
+        _ = request.form.get("_csrf")
+
+        # Honeypot for bots
+        if (request.form.get("website") or "").strip():
+            flash("Submission ignored.", "warning")
+            return render_template("tow_log.html")
+
+        # ---- Extract & normalize ----
+        company_id_raw = (request.form.get("company_id") or "").strip()
+        location = (request.form.get("location") or "").strip()
+        time_iso = (request.form.get("time_iso") or "").strip()
+        make = (request.form.get("make") or "").strip()
+        model = (request.form.get("model") or "").strip()
+        tag_raw = (request.form.get("tag") or "").strip()
+        state_raw = (request.form.get("state") or "").strip()
+        vin = (request.form.get("vin") or "").strip()
+        reason = (request.form.get("reason") or "").strip()
+
+        # Required: company_id must be integer and in allow-list (active)
+        try:
+            company_id_int = int(company_id_raw)
+        except (TypeError, ValueError):
+            flash("Company ID must be a number.", "error")
+            return render_template("tow_log.html")
+        company_id = str(company_id_int)
+
+        companies = load_tow_companies()
+        company_info = companies.get(company_id)
+        if not company_info or not company_info.get("active", False):
+            flash("Company ID not recognized or inactive. Contact admin.", "error")
+            return render_template("tow_log.html")
+        company_name = str(company_info.get("name", "")).strip()
+
+        # Required: location
+        if not location:
+            flash("Please enter the location of the tow.", "error")
+            return render_template("tow_log.html")
+
+        # Required: tag (accept 'NO TAG')
+        if not tag_raw:
+            flash("Please enter the tag (or 'NO TAG' if none).", "error")
+            return render_template("tow_log.html")
+        tag = "NO TAG" if tag_raw.strip().lower() == "no tag" else tag_raw.strip().upper()
+        # Optional: validate two-letter US state abbreviation (blank allowed)
+        state = state_raw.upper()
+        if state:
+            _states = {"AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"}
+            if state not in _states:
+                flash("Please select a valid state abbreviation.", "error")
+                return render_template("tow_log.html")
+
+        # time: default to now if blank
+        if not time_iso:
+            time_iso = datetime.now().isoformat(timespec="minutes")
+
+        # vin: trim and hard limit (defensive; template already has maxlength)
+        if len(vin) > 17:
+            vin = vin[:17]
+
+        # reason: cap at 300
+        if len(reason) > 300:
+            flash("Reason must be 300 characters or fewer.", "error")
+            return render_template("tow_log.html")
+
+        # ---- Append clean record ----
+        payload = {
+            "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "ip": request.headers.get("X-Forwarded-For", request.remote_addr or ""),
+            "company_id": company_id,
+            "company_name": company_name,
+            "location": location,
+            "time_iso": time_iso,
+            "make": make,
+            "model": model,
+            "tag": tag,
+            "vin": vin,
+            "reason": reason,
+            "state": state,
+        }
+        entries = load_tow_log()
+        entries.append(payload)
+        save_tow_log(entries)
+        flash("Tow entry submitted. Thank you.", "success")
+
+    return render_template("tow_log.html")
 @app.route("/")
 def home():
     return "Hello, world!"
@@ -1223,7 +1636,12 @@ def login():
             if not is_user_active(user):
                 return "Account is inactive. Contact an admin.", 403
             session["username"] = username
-            session["role"] = user.get("role", "user")
+            # Normalize and enforce role from user record (no accidental elevation)
+            role = (user.get("role") or "user")
+            role = role.strip().lower()
+            if role not in ("user", "supervisor", "admin", "webmaster"):
+                role = "user"
+            session["role"] = role
             return redirect(url_for("landing"))
         else:
             return "Invalid username or password", 401
@@ -1593,6 +2011,12 @@ def admin_requests():
         flush_seq()
 
     # Render grouped structure; `users` still available if needed by template
+    # --- Squad scoping for supervisors (listing) ---
+    actor = all_users.get(session.get("username"), {})
+    if actor.get("role") == "supervisor":
+        actor_squad = actor.get("squad")
+        if actor_squad:
+            groups = [g for g in groups if (all_users.get(g.get("user"), {}).get("squad") == actor_squad)]
     return render_template("admin_requests.html", groups=groups, users=all_users)
 
 
@@ -1607,12 +2031,18 @@ def handle_request():
         return "Server error", 500
 
     admin_user = users.get(username)
-    if not admin_user or admin_user.get("role") not in ["admin", "webmaster"]:
+    if not admin_user or admin_user.get("role") not in ["admin", "webmaster", "supervisor"]:
         return redirect(url_for("login"))
 
     target = request.form.get("user")
     date_str = request.form.get("date")
     action = request.form.get("action")
+    # --- Squad scoping for supervisors (POST guard) ---
+    if admin_user.get("role") == "supervisor":
+        target_user = users.get(target)
+        if not target_user or target_user.get("squad") != admin_user.get("squad"):
+            flash("Access denied: supervisors can only act on their own squad.", "error")
+            return redirect(url_for("admin_requests"))
 
     handled = False
     # Find the exact pending vacation request that matches user + date
@@ -1677,9 +2107,115 @@ def admin_history():
     if "username" not in session:
         return redirect(url_for("login"))
     log_data = get_request_log()
-    filtered_log = [e for e in log_data if e.get("status") in ("approved", "denied")]
-    return render_template("admin_history.html", request_log=filtered_log)
+    # --- Filters (admin history): date range, user, status, type ---
+    q_user = (request.args.get("user") or "").strip()
+    q_status = (request.args.get("status") or "").strip().lower()  # approved|denied|logged|cancelled
+    q_type = (request.args.get("type") or "").strip().lower()      # vacation|sick
+    q_from = _parse_iso_date(request.args.get("date_from"))
+    q_to = _parse_iso_date(request.args.get("date_to"))
 
+    def _in_range(ds: str) -> bool:
+        try:
+            d = datetime.strptime(ds, "%Y-%m-%d").date()
+        except Exception:
+            return False
+        if q_from and d < q_from:
+            return False
+        if q_to and d > q_to:
+            return False
+        return True
+
+    filtered_log = []
+    for e in log_data:
+        # Only show decisions/logs that are meaningful to admins by default
+        st = (e.get("status") or "").lower()
+        tp = (e.get("type") or "").lower()
+        if q_status and st != q_status:
+            continue
+        if q_type and tp != q_type:
+            continue
+        if q_user and (e.get("user") != q_user):
+            continue
+        ds = e.get("date") or ""
+        if (q_from or q_to) and (not _in_range(ds)):
+            continue
+        filtered_log.append(e)
+    # Provide users map and echo filters back to template for form stickiness
+    users_map = load_users()
+    return render_template(
+        "admin_history.html",
+        request_log=filtered_log,
+        users=users_map,
+        q_user=q_user,
+        q_status=q_status,
+        q_type=q_type,
+        q_date_from=(request.args.get("date_from") or ""),
+        q_date_to=(request.args.get("date_to") or "")
+    )
+
+
+
+@app.route("/admin/tow-log", endpoint="admin_tow_log")
+@require_role("admin", "webmaster", "supervisor")
+def admin_tow_log():
+    """Admin/Supervisor review of Tow Log submissions with simple filters."""
+    entries = load_tow_log()
+
+    # --- Filters ---
+    q_company = (request.args.get("company_id") or "").strip()
+    q_from = (request.args.get("date_from") or "").strip()  # YYYY-MM-DD
+    q_to = (request.args.get("date_to") or "").strip()      # YYYY-MM-DD
+
+    def _parse_date_ymd(s: str):
+        try:
+            return datetime.strptime(s, "%Y-%m-%d").date()
+        except Exception:
+            return None
+
+    d_from = _parse_date_ymd(q_from) if q_from else None
+    d_to = _parse_date_ymd(q_to) if q_to else None
+
+    def _entry_date(e: dict):
+        # Prefer time_iso (YYYY-MM-DDTHH:MM) then ts (YYYY-MM-DD HH:MM:SS)
+        t = (e.get("time_iso") or "").strip()
+        if t:
+            try:
+                return datetime.fromisoformat(t)
+            except Exception:
+                pass
+        ts = (e.get("ts") or "").strip()
+        try:
+            return datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return datetime.min
+
+    # Apply filters
+    filtered = []
+    for e in entries:
+        if q_company and str(e.get("company_id", "")).strip() != q_company:
+            continue
+        if d_from or d_to:
+            dtv = _entry_date(e)
+            dt = dtv.date() if dtv != datetime.min else None
+            if not dt:
+                continue
+            if d_from and dt < d_from:
+                continue
+            if d_to and dt > d_to:
+                continue
+        filtered.append(e)
+
+    # Sort newest-first
+    filtered.sort(key=_entry_date, reverse=True)
+
+    return render_template(
+        "admin_tow_log.html",
+        entries=filtered,
+        q_company=q_company,
+        q_date_from=q_from,
+        q_date_to=q_to,
+        total=len(filtered)
+    )
 
 
 @app.route("/admin/sick-history")
@@ -2113,6 +2649,292 @@ def toggle_bidding():
 
 
 # =========================
+# NCCPD ONLY: Training Day (Supervisor Tab Placeholder)
+# =========================
+@app.route("/admin/training-day", methods=["GET", "POST"], endpoint="training_day_create")
+@require_role("supervisor", "admin", "webmaster")
+def training_day_create():
+    """
+    NCCPD ONLY: Render the Create a Training Day form.
+    - Supervisors: see only officers in their own squad.
+    - Admin/Webmaster: see all active users.
+    """
+    all_users = load_users()
+    actor = all_users.get(session.get("username"), {})
+    role = actor.get("role")
+    actor_squad = actor.get("squad")
+
+    def _is_active(u: dict) -> bool:
+        return bool(u.get("is_active", True))
+
+    def _same_squad(u: dict) -> bool:
+        return u.get("squad") == actor_squad
+
+    # Build officer list based on role
+    if role == "supervisor" and actor_squad:
+        pool = {k: v for k, v in all_users.items() if _is_active(v) and _same_squad(v)}
+    else:
+        pool = {k: v for k, v in all_users.items() if _is_active(v)}
+
+    officers = [
+        {
+            "username": uname,
+            "name": f"{u.get('last_name','')}, {u.get('first_name','')}",
+            "squad": u.get("squad"),
+        }
+        for uname, u in pool.items()
+    ]
+    officers.sort(key=lambda x: x["name"].lower())
+
+    # --- POST: create training day entries (single date, multiple officers) ---
+    if request.method == "POST":
+        sel_officers = request.form.getlist("officers")
+        date_str = (request.form.get("date") or "").strip()
+        notes = (request.form.get("notes") or "").strip()
+
+        # Basic validation
+        day = _parse_iso_date(date_str)
+        if not day:
+            flash("Please provide a valid date.", "error")
+            return redirect(url_for("training_day_create"))
+        if not sel_officers:
+            flash("Please select at least one officer.", "error")
+            return redirect(url_for("training_day_create"))
+
+        # Enforce squad scope for supervisors via `pool`
+        allowed = set((pool or {}).keys())
+        filtered = [u for u in sel_officers if u in allowed] if allowed else sel_officers
+        filtered_out = [u for u in sel_officers if u not in allowed] if allowed else []
+        if not filtered:
+            flash("No valid officers selected for your scope.", "error")
+            return redirect(url_for("training_day_create"))
+
+        # Load existing entries; de-duplicate by (date, officer)
+        entries = load_training_days()
+        existing_keys = { (e.get("date"), e.get("officer")) for e in entries }
+
+        created = 0
+        skipped = 0
+        ts = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        actor_uname = session.get("username") or "system"
+
+        for uname in filtered:
+            key = (date_str, uname)
+            if key in existing_keys:
+                skipped += 1
+                continue
+            target = all_users.get(uname, {})
+            entry = {
+                "id": f"td_{date_str}_{uname}",
+                "date": date_str,
+                "officer": uname,
+                "notes": notes,
+                "squad": target.get("squad"),
+                "created_by": actor_uname,
+                "created_at": ts,
+                "updated_at": ts,
+            }
+            entries.append(entry)
+            existing_keys.add(key)
+            created += 1
+
+            # Audit on the target user's record (best-effort)
+            try:
+                audit_append(all_users, uname, "training_day_create", {
+                    "date": date_str,
+                    "notes": notes,
+                    "squad": target.get("squad"),
+                }, save_immediately=False)
+            except Exception:
+                pass
+
+        save_training_days(entries)
+        save_users(all_users)
+
+        msg = f"Created {created} training assignment(s)."
+        if skipped:
+            msg += f" Skipped {skipped} duplicate(s)."
+        if filtered_out:
+            msg += f" Ignored {len(filtered_out)} out-of-scope selection(s)."
+        flash(msg, "success" if created else "warning")
+        return redirect(url_for("training_day_create"))
+
+    # Load existing entries & apply squad scoping for display
+    entries = load_training_days()
+
+    def _by_date_desc_then_name(e):
+        ds = e.get("date", "")
+        try:
+            k1 = datetime.strptime(ds, "%Y-%m-%d")
+        except Exception:
+            k1 = datetime.min
+        u = all_users.get(e.get("officer"), {})
+        lname = (u.get("last_name", "") or "").lower()
+        fname = (u.get("first_name", "") or "").lower()
+        return (-k1.timestamp(), lname, fname)
+
+    if role == "supervisor" and actor_squad:
+        entries = [e for e in entries if e.get("squad") == actor_squad]
+    try:
+        entries = sorted(entries, key=_by_date_desc_then_name)
+    except Exception:
+        pass
+                # --- POST: create training day entries (one date, multiple officers) ---
+    if request.method == "POST":
+        sel_officers = request.form.getlist("officers")
+        date_str = (request.form.get("date") or "").strip()
+        notes = (request.form.get("notes") or "").strip()
+
+        # Basic validation
+        day = _parse_iso_date(date_str)
+        if not day:
+            flash("Please provide a valid date.", "error")
+            return redirect(url_for("training_day_create"))
+        if not sel_officers:
+            flash("Please select at least one officer.", "error")
+            return redirect(url_for("training_day_create"))
+
+        # Build allowed officer pool based on role/squad
+        entries = load_training_days()
+        allowed_usernames = set()
+        all_users = load_users()
+        if role == "supervisor" and actor_squad:
+            for uname, u in all_users.items():
+                if u.get("is_active", True) and u.get("squad") == actor_squad:
+                    allowed_usernames.add(uname)
+        else:
+            for uname, u in all_users.items():
+                if u.get("is_active", True):
+                    allowed_usernames.add(uname)
+
+        filtered = [u for u in sel_officers if u in allowed_usernames]
+        filtered_out = [u for u in sel_officers if u not in allowed_usernames]
+        if not filtered:
+            flash("No valid officers selected for your scope.", "error")
+            return redirect(url_for("training_day_create"))
+
+        existing_keys = {(e.get("date"), e.get("officer")) for e in entries}
+        created = 0
+        skipped = 0
+        ts = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        actor_uname = session.get("username") or "system"
+
+        for uname in filtered:
+            key = (date_str, uname)
+            if key in existing_keys:
+                skipped += 1
+                continue
+            target = all_users.get(uname, {})
+            entry = {
+                "id": f"td_{date_str}_{uname}",
+                "date": date_str,
+                "officer": uname,
+                "notes": notes,
+                "squad": target.get("squad"),
+                "created_by": actor_uname,
+                "created_at": ts,
+                "updated_at": ts,
+            }
+            entries.append(entry)
+            existing_keys.add(key)
+            created += 1
+
+            # Best-effort audit append on the officer record
+            try:
+                audit_append(all_users, uname, "training_day_create", {
+                    "date": date_str,
+                    "notes": notes,
+                    "squad": target.get("squad"),
+                }, save_immediately=False)
+            except Exception:
+                pass
+
+        save_training_days(entries)
+        save_users(all_users)
+
+        msg = f"Created {created} training assignment(s)."
+        if skipped:
+            msg += f" Skipped {skipped} duplicate(s)."
+        if filtered_out:
+            msg += f" Ignored {len(filtered_out)} out-of-scope selection(s)."
+        flash(msg, "success" if created else "warning")
+        return redirect(url_for("training_day_create"))
+
+    # --- Load entries for display (squad-scoped for supervisors) ---
+    entries = load_training_days()
+    try:
+        def _key_sort(e):
+            ds = e.get("date", "")
+            try:
+                t = datetime.strptime(ds, "%Y-%m-%d").timestamp()
+            except Exception:
+                t = 0
+            # last, first for stable officer ordering
+            u = all_users.get(e.get("officer"), {}) if 'all_users' in locals() else load_users().get(e.get("officer"), {})
+            name_key = f"{u.get('last_name','')},{u.get('first_name','')}".lower()
+            return (-t, name_key)
+        if role == "supervisor" and actor_squad:
+            entries = [e for e in entries if e.get("squad") == actor_squad]
+        entries = sorted(entries, key=_key_sort)
+    except Exception:
+        pass
+    
+    return render_template(
+        "training_day_create.html",
+        officers=officers,
+        actor=actor,
+        actor_squad=actor_squad,
+        role=role,
+        entries=entries,
+    )
+
+
+# =========================
+# Delete Training Day Entry
+# =========================
+@app.route("/admin/training-day/delete", methods=["POST"], endpoint="training_day_delete")
+@require_role("supervisor", "admin", "webmaster")
+def training_day_delete():
+    """Delete a single training day entry by id (or by date+officer fallback)."""
+    all_users = load_users()
+    actor = all_users.get(session.get("username"), {})
+    role = actor.get("role")
+    actor_squad = actor.get("squad")
+
+    entry_id = (request.form.get("id") or "").strip()
+    date_str = (request.form.get("date") or "").strip()
+    officer = (request.form.get("officer") or "").strip()
+
+    entries = load_training_days()
+
+    def _matches(e):
+        if entry_id:
+            return e.get("id") == entry_id
+        return (e.get("date") == date_str) and (e.get("officer") == officer)
+
+    # Enforce supervisor scope
+    def _allowed(e):
+        if role == "supervisor" and actor_squad:
+            return e.get("squad") == actor_squad
+        return True
+
+    new_entries = []
+    removed = 0
+    for e in entries:
+        if _matches(e) and _allowed(e):
+            removed += 1
+            continue
+        new_entries.append(e)
+
+    if removed:
+        save_training_days(new_entries)
+        flash(f"Deleted {removed} training assignment(s).", "success")
+    else:
+        flash("No matching entry found or not permitted.", "warning")
+
+    return redirect(url_for("training_day_create"))
+
+# =========================
 # NCCPD ONLY: Admin button to run accrual
 # =========================
 @app.route("/admin/nccpd-accrual", methods=["POST"])
@@ -2159,6 +2981,8 @@ def nccpd_run_accrual():
         flash(f"NCCPD accrual complete for {total} users.", "success")
 
     return redirect(url_for("landing"))
+# =========================
+
 
 # User‑initiated cancellation: removes from pending queue and appends a
 # 'cancelled' event to the immutable request log for history/audit.
@@ -2368,3 +3192,20 @@ def _csrf_global_enforcer():
     want = session.get('csrf_token') or ''
     if not sent or not want or not secrets.compare_digest(sent, want):
         return 'CSRF token missing or invalid', 400
+if __name__ == "__main__":
+    app.run(debug=True)
+# --- Register blueprints (after routes are attached) -----------------------
+# Idempotent: only register if not already registered.
+if "tow.admin_tow_log" not in app.view_functions:
+    pass  # removed: reverting to plain @app.route
+# --- Register blueprints (ensure after all tow routes) ---------------------
+# Only register if the endpoint doesn't exist yet (prevents double-reg)
+try:
+    vf_keys = set(getattr(app, "view_functions", {}).keys())
+except Exception:
+    vf_keys = set()
+if "tow.admin_tow_log" not in vf_keys or "tow.tow_log" not in vf_keys:
+    pass  # removed: reverting to plain @app.route
+
+# --- DEBUG: list endpoints (temporary; remove after verifying) -------------
+# (Removed: temporary /_debug/routes endpoint)

@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Admin – Tow Log</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
+    <style>
+      body {
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+          Helvetica, Arial;
+        margin: 0;
+      }
+      .wrap {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 16px;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 16px;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+      label {
+        font-size: 13px;
+        font-weight: 600;
+        margin-right: 6px;
+      }
+      input,
+      select {
+        border: 1px solid #cbd5e0;
+        padding: 8px 10px;
+        border-radius: 6px;
+        font-size: 14px;
+      }
+      input[type="date"],
+      input[type="text"],
+      input[type="number"] {
+        width: 200px;
+      }
+      button,
+      .btn {
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        padding: 10px 14px;
+        border-radius: 6px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+      }
+      .btn-secondary {
+        background: #4a5568;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+        font-size: 14px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 10px;
+        border-bottom: 1px solid #edf2f7;
+        vertical-align: top;
+      }
+      th {
+        font-size: 12px;
+        text-transform: uppercase;
+        color: #4a5568;
+        letter-spacing: 0.04em;
+      }
+      .muted {
+        color: #718096;
+        font-size: 12px;
+      }
+      .count {
+        font-size: 13px;
+        color: #4a5568;
+        margin-left: 6px;
+      }
+    </style>
+  </head>
+  <body class="theme-dark min-h-screen">
+    <div class="wrap">
+      {% include '_toasts.html' %}
+      <h1>
+        Admin – Tow Log
+        <span class="count"
+          >{{ total }} result{{ '' if total == 1 else 's' }}</span
+        >
+      </h1>
+
+      <div
+        class="card card--loose bg-gray-800 border border-slate-700 shadow-md"
+      >
+        <form method="GET" class="actions gap-3">
+          <div>
+            <label
+              for="company_id"
+              class="block text-xs font-semibold mb-1 text-gray-300"
+              >Company ID</label
+            >
+            <input
+              id="company_id"
+              name="company_id"
+              type="number"
+              inputmode="numeric"
+              value="{{ q_company }}"
+              class="form-input block w-36 bg-gray-900 border border-gray-700 text-gray-200 rounded"
+            />
+          </div>
+          <div>
+            <label
+              for="date_from"
+              class="block text-xs font-semibold mb-1 text-gray-300"
+              >From</label
+            >
+            <input
+              id="date_from"
+              name="date_from"
+              type="date"
+              value="{{ q_date_from }}"
+              class="form-input block w-40 bg-gray-900 border border-gray-700 text-gray-200 rounded"
+            />
+          </div>
+          <div>
+            <label
+              for="date_to"
+              class="block text-xs font-semibold mb-1 text-gray-300"
+              >To</label
+            >
+            <input
+              id="date_to"
+              name="date_to"
+              type="date"
+              value="{{ q_date_to }}"
+              class="form-input block w-40 bg-gray-900 border border-gray-700 text-gray-200 rounded"
+            />
+          </div>
+          <div>
+            <button
+              type="submit"
+              class="btn bg-yellow-500 text-black hover:bg-yellow-400 no-underline mx-2"
+            >
+              Filter
+            </button>
+            <a
+              class="btn bg-yellow-500 text-black hover:bg-yellow-400 hover:text-black focus:text-black active:text-black no-underline hover:no-underline focus:no-underline active:no-underline hover:opacity-100 focus:opacity-100 active:opacity-100 mx-2 transition-colors"
+              href="{{ url_for('admin_tow_log') }}"
+              >Clear</a
+            >
+          </div>
+        </form>
+
+        {% if entries %}
+        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <thead class="bg-gray-50 dark:bg-gray-700">
+            <tr>
+              <th
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+              >
+                When
+              </th>
+              <th
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+              >
+                Company
+              </th>
+              <th
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+              >
+                Company Name
+              </th>
+              <th
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+              >
+                Location
+              </th>
+              <th
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+              >
+                Vehicle
+              </th>
+              <th
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+              >
+                Tag / VIN
+              </th>
+              <th
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+              >
+                State
+              </th>
+              <th
+                class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider"
+              >
+                Reason
+              </th>
+            </tr>
+          </thead>
+          <tbody
+            class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700"
+          >
+            {% for e in entries %}
+            <tr
+              class="odd:bg-slate-800/40 even:bg-slate-800/20 hover:bg-slate-700/50 transition-colors"
+            >
+              <td>
+                <div>{{ e.time_iso or e.ts }}</div>
+                <div class="muted">{{ e.ts }}</div>
+              </td>
+              <td>
+                <div>ID {{ e.company_id }}</div>
+              </td>
+              <td>
+                <div>{{ e.company_name or '—' }}</div>
+              </td>
+              <td>
+                <div>{{ e.location }}</div>
+              </td>
+              <td>
+                <div>{{ e.make }} {{ e.model }}</div>
+              </td>
+              <td>
+                <div>{{ e.tag }}</div>
+                <div class="muted">{{ e.vin }}</div>
+              </td>
+              <td>
+                <div>{{ e.state or '' }}</div>
+              </td>
+              <td>
+                <div>{{ e.reason }}</div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="muted">No entries match your filters.</p>
+        {% endif %}
+      </div>
+      <div class="mt-6 text-center">
+        <a
+          class="btn bg-red-600 hover:bg-red-500 text-white no-underline hover:no-underline focus:no-underline active:no-underline transition-colors"
+          href="{{ url_for('landing') }}"
+        >
+          Back to Dashboard
+        </a>
+      </div>
+    </div>
+  </body>
+</html>

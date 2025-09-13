@@ -25,20 +25,11 @@
     />
   </head>
 
-  <body
-    class="theme-dark min-h-screen"
+  <body class="theme-dark min-h-screen">
     <!--
-    Dark
-    theme
-    baseline;
-    body
-    stretches
-    full
-    viewport
-    height
-    --
-  >
-    >
+      Dark theme baseline;
+      body stretches full viewport height
+    -->
     <!-- Main container -->
     <div class="max-w-5xl mx-auto px-4 py-12 animate-fade-in">
       <!-- Toast notifications for feedback (success/error/info) -->
@@ -120,8 +111,7 @@
 
         <!-- Admin-only section: gated by session.role -->
         {# Admin-only links (gate by session role) #} {% set role =
-        session.get('role') %} {% if role in ['webmaster', 'admin',
-        'supervisor'] %}
+        session.get('role') %} {% if role in ['webmaster', 'admin'] %}
         <div class="col-span-full mt-2">
           <div class="admin-banner">ADMINISTRATOR &amp; SUPERVISOR TOOLS</div>
         </div>
@@ -189,6 +179,68 @@
           </a>
         </form>
 
+        <!-- Nav-card: NCCPD Create a Training Day (supervisor/admin/webmaster) -->
+        <a
+          href="{{ url_for('training_day_create') }}"
+          class="nav-card no-underline"
+        >
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="nav-card__title text-lg mb-1">
+                Create a Training Day (NCCPD)
+              </h3>
+              <p class="nav-card__meta muted">
+                Supervisors can create a Training Day entry. (Placeholder)
+              </p>
+            </div>
+            <span class="emoji" aria-hidden="true">🎓</span>
+          </div>
+        </a>
+
+        <!-- Nav-card: Supervisor Set Day Status (NCCPD) -->
+        <a href="{{ url_for('day_status') }}" class="nav-card no-underline">
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="nav-card__title text-lg mb-1">
+                Set Day Status (NCCPD)
+              </h3>
+              <p class="nav-card__meta muted">
+                Supervisors can set per-day status for officers (future 30
+                days).
+              </p>
+            </div>
+            <span class="emoji" aria-hidden="true">📝</span>
+          </div>
+        </a>
+
+        <!-- Nav-card: Admin Tow Log -->
+        <a href="{{ url_for('admin_tow_log') }}" class="nav-card no-underline">
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="nav-card__title text-lg mb-1">
+                Admin Tow Log (NCCPD)
+              </h3>
+              <p class="nav-card__meta muted">
+                Review and manage all submitted tow logs.
+              </p>
+            </div>
+            <span class="emoji" aria-hidden="true">🚛</span>
+          </div>
+        </a>
+
+        <!-- Nav-card: Admin Tow Log -->
+        <a href="{{ url_for('tow_log') }}" class="nav-card no-underline">
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="nav-card__title text-lg mb-1">Tow Log (NCCPD)</h3>
+              <p class="nav-card__meta muted">
+                Review and manage public tow submissions.
+              </p>
+            </div>
+            <span class="emoji" aria-hidden="true">🚚</span>
+          </div>
+        </a>
+
         <!-- Nav-card: Admin user editor -->
         <!-- Edit Users (matches other nav-card tiles + 👥 emoji) -->
         <a
@@ -203,6 +255,44 @@
               </p>
             </div>
             <span class="emoji" aria-hidden="true">👥</span>
+          </div>
+        </a>
+        {% elif role == 'supervisor' %}
+        <div class="col-span-full mt-2">
+          <div class="admin-banner">SUPERVISOR TOOLS</div>
+        </div>
+
+        <!-- Nav-card: NCCPD Create a Training Day (supervisor only) -->
+        <a
+          href="{{ url_for('training_day_create') }}"
+          class="nav-card no-underline"
+        >
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="nav-card__title text-lg mb-1">
+                Create a Training Day (NCCPD)
+              </h3>
+              <p class="nav-card__meta muted">
+                Supervisors can create a Training Day entry. (Placeholder)
+              </p>
+            </div>
+            <span class="emoji" aria-hidden="true">🎓</span>
+          </div>
+        </a>
+
+        <!-- Nav-card: Supervisor Set Day Status (NCCPD) -->
+        <a href="{{ url_for('day_status') }}" class="nav-card no-underline">
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="nav-card__title text-lg mb-1">
+                Set Day Status (NCCPD)
+              </h3>
+              <p class="nav-card__meta muted">
+                Supervisors can set per-day status for officers (future 30
+                days).
+              </p>
+            </div>
+            <span class="emoji" aria-hidden="true">📝</span>
           </div>
         </a>
         {% endif %}

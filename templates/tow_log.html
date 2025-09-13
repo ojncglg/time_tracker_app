@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Tow Log</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 40px;
+        background-color: #f4f4f9;
+      }
+      h1 {
+        color: #333;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+      }
+      th,
+      td {
+        padding: 12px;
+        border-bottom: 1px solid #ccc;
+        text-align: left;
+      }
+      th {
+        background-color: #e2e2e2;
+      }
+      tr:hover {
+        background-color: #f1f1f1;
+      }
+      .container {
+        max-width: 900px;
+        margin: 0 auto;
+        background: white;
+        padding: 20px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        text-align: center;
+      }
+      .container form {
+        text-align: left;
+      }
+      .nav {
+        margin-bottom: 20px;
+      }
+      .nav a {
+        margin-right: 15px;
+        text-decoration: none;
+        color: #007bff;
+      }
+      .nav a:hover {
+        text-decoration: underline;
+      }
+      /* Simple form layout helpers */
+      .field {
+        margin-top: 14px;
+      }
+      .field-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+      .field label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 6px;
+        text-align: center;
+      }
+      .field input,
+      .field textarea,
+      .field select {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        font-size: 14px;
+        box-sizing: border-box;
+      }
+      .field-small input,
+      .field-small select {
+        width: 60%;
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .field-wide input,
+      .field-wide textarea {
+        width: 80%;
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .field small {
+        display: block;
+        color: #666;
+        margin-top: 6px;
+        text-align: center;
+      }
+      /* Subtle highlight for required fields */
+      .field input[required],
+      .field textarea[required] {
+        background-color: #fffdf0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Tow Log</h1>
+
+      <div style="font-size: 0.75rem; max-width: 300px; margin: 0 auto">
+        {% include '_toasts.html' %}
+      </div>
+
+      <form method="POST" action="{{ url_for('tow_log') }}">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}" />
+        <!-- Honeypot for bots -->
+        <input
+          type="text"
+          name="website"
+          autocomplete="off"
+          tabindex="-1"
+          style="position: absolute; left: -9999px"
+          aria-hidden="true"
+        />
+
+        <!-- Tow Company ID -->
+        <div class="field field-wide">
+          <label for="company_id">
+            Tow Company ID <span style="color: #c00">*</span>
+          </label>
+          <input
+            id="company_id"
+            name="company_id"
+            type="number"
+            inputmode="numeric"
+            required
+          />
+          <small>We will provide this numeric ID to each company.</small>
+        </div>
+
+        <!-- Location of Tow -->
+        <div class="field field-wide">
+          <label for="location">
+            Location of Tow <span style="color: #c00">*</span>
+          </label>
+          <input
+            id="location"
+            name="location"
+            type="text"
+            required
+            placeholder="Street, intersection, or lot name"
+          />
+        </div>
+
+        <!-- Time of Tow -->
+        <div class="field field-wide">
+          <label for="time_iso">Time of Tow</label>
+          <input id="time_iso" name="time_iso" type="datetime-local" />
+          <small>Leave blank to use the current time.</small>
+        </div>
+
+        <!-- Make and Model -->
+        <div class="field-row">
+          <div class="field field-small">
+            <label for="make">Make</label>
+            <input id="make" name="make" type="text" />
+          </div>
+          <div class="field field-small">
+            <label for="model">Model</label>
+            <input id="model" name="model" type="text" />
+          </div>
+        </div>
+
+        <!-- Tag (Plate), State, and VIN -->
+        <div class="field-row">
+          <div class="field field-small">
+            <label for="tag">
+              Tag (Plate) <span style="color: #c00">*</span>
+            </label>
+            <input
+              id="tag"
+              name="tag"
+              type="text"
+              required
+              placeholder="Enter 'NO TAG' if none"
+            />
+          </div>
+          <div class="field field-small">
+            <label for="state">State</label>
+            <select id="state" name="state">
+              <option value="">-- State --</option>
+              <option>AL</option>
+              <option>AK</option>
+              <option>AZ</option>
+              <option>AR</option>
+              <option>CA</option>
+              <option>CO</option>
+              <option>CT</option>
+              <option>DE</option>
+              <option>DC</option>
+              <option>FL</option>
+              <option>GA</option>
+              <option>HI</option>
+              <option>ID</option>
+              <option>IL</option>
+              <option>IN</option>
+              <option>IA</option>
+              <option>KS</option>
+              <option>KY</option>
+              <option>LA</option>
+              <option>ME</option>
+              <option>MD</option>
+              <option>MA</option>
+              <option>MI</option>
+              <option>MN</option>
+              <option>MS</option>
+              <option>MO</option>
+              <option>MT</option>
+              <option>NE</option>
+              <option>NV</option>
+              <option>NH</option>
+              <option>NJ</option>
+              <option>NM</option>
+              <option>NY</option>
+              <option>NC</option>
+              <option>ND</option>
+              <option>OH</option>
+              <option>OK</option>
+              <option>OR</option>
+              <option>PA</option>
+              <option>RI</option>
+              <option>SC</option>
+              <option>SD</option>
+              <option>TN</option>
+              <option>TX</option>
+              <option>UT</option>
+              <option>VT</option>
+              <option>VA</option>
+              <option>WA</option>
+              <option>WV</option>
+              <option>WI</option>
+              <option>WY</option>
+            </select>
+            <small>Select plate state (optional).</small>
+          </div>
+          <div class="field field-small">
+            <label for="vin">VIN</label>
+            <input id="vin" name="vin" type="text" maxlength="17" />
+          </div>
+        </div>
+
+        <!-- Reason -->
+        <div class="field field-wide">
+          <label for="reason">Reason</label>
+          <textarea
+            id="reason"
+            name="reason"
+            rows="3"
+            maxlength="300"
+            placeholder="abandoned, police request, repo, etc."
+          ></textarea>
+          <small>Max 300 characters.</small>
+          <small id="reasonCounter">0 / 300</small>
+        </div>
+
+        <div
+          style="
+            margin-top: 16px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            justify-content: center;
+          "
+        >
+          <button
+            type="submit"
+            style="
+              background: #2563eb;
+              color: #fff;
+              border: none;
+              padding: 10px 16px;
+              border-radius: 6px;
+              cursor: pointer;
+            "
+          >
+            Submit Tow
+          </button>
+        </div>
+      </form>
+    </div>
+  </body>
+  <!-- Character counter and submit button handler -->
+  <script>
+    (function () {
+      var reason = document.getElementById("reason");
+      var counter = document.getElementById("reasonCounter");
+      if (reason && counter) {
+        var update = function () {
+          var len = (reason.value || "").length;
+          counter.textContent = len + " / 300";
+        };
+        reason.addEventListener("input", update);
+        update();
+      }
+
+      var form =
+        document.querySelector('form[action*="tow_log"]') ||
+        document.querySelector("form");
+      if (form) {
+        form.addEventListener("submit", function (e) {
+          var btn = form.querySelector('button[type="submit"]');
+          if (btn) {
+            btn.disabled = true;
+            btn.textContent = "Submitting…";
+          }
+        });
+      }
+    })();
+  </script>
+</html>

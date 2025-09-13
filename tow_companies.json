@@ -1,0 +1,5 @@
+{
+  "1001": { "name": "Acme Tow", "active": true },
+  "2002": { "name": "City Motors", "active": true },
+  "3003": { "name": "Old Vendor", "active": false }
+}

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<!--
+  Template: training_day_create.html
+  Purpose: Supervisors assign a single-day training to one or more officers in their squad.
+  Access: Restricted to supervisor/admin/webmaster via @require_role.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Create Training Day (NCCPD)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
+  </head>
+  <body class="theme-dark min-h-screen">
+    <div class="max-w-4xl mx-auto px-4 py-10">
+      {% include '_toasts.html' %}
+      <header class="text-center mb-8">
+        <h2 class="text-3xl font-bold tracking-tight">
+          Create a Training Day (NCCPD)
+        </h2>
+        <p class="mt-2 text-sm muted">
+          Select one or more officers{% if role == 'supervisor' and actor_squad
+          %} from <strong>Squad {{ actor_squad }}</strong>{% endif %}, choose a
+          date, and add notes.
+        </p>
+      </header>
+
+      <!-- Form scaffolding (POST handler added next step) -->
+      <form
+        action="{{ url_for('training_day_create') }}"
+        method="POST"
+        class="bg-white/5 dark:bg-gray-800 rounded-lg p-6 space-y-6"
+      >
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}" />
+
+        <!-- Officers multi-select (checkbox list) -->
+        <div>
+          <label class="block text-sm font-semibold mb-2">Officers</label>
+          <div
+            class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-80 overflow-auto p-3 bg-white/5 rounded"
+          >
+            {% for o in officers %}
+            <label class="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                name="officers"
+                value="{{ o.username }}"
+                class="h-4 w-4"
+              />
+              <span
+                >{{ o.name }}
+                <span class="text-xs text-gray-400"
+                  >(Squad {{ o.squad or '?' }})</span
+                ></span
+              >
+            </label>
+            {% else %}
+            <p class="text-sm text-gray-400">No officers available.</p>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- Date (single day) -->
+        <div>
+          <label for="date" class="block text-sm font-semibold mb-1"
+            >Date</label
+          >
+          <input
+            type="date"
+            id="date"
+            name="date"
+            class="form-input bg-gray-900 border border-gray-700 text-gray-100 rounded w-56"
+            required
+          />
+        </div>
+
+        <!-- Notes -->
+        <div>
+          <label for="notes" class="block text-sm font-semibold mb-1"
+            >Notes</label
+          >
+          <textarea
+            id="notes"
+            name="notes"
+            rows="3"
+            class="form-input bg-gray-900 border border-gray-700 text-gray-100 rounded w-full"
+            placeholder="e.g., Range, In-service"
+          ></textarea>
+        </div>
+
+        <div class="flex gap-3">
+          <button type="submit" class="btn btn--primary">
+            Create Training Day
+          </button>
+          <a href="{{ url_for('landing') }}" class="btn btn--secondary"
+            >Back to Dashboard</a
+          >
+        </div>
+      </form>
+
+      <!-- Future: list existing training entries with edit/delete (Step 3) -->
+      <!-- Existing Training Day Entries (read-only for now) -->
+      <section class="mt-10">
+        <h3 class="text-lg font-semibold mb-3">
+          Existing Training Assignments
+        </h3>
+        {% if entries and entries|length > 0 %}
+        <div class="overflow-x-auto rounded-lg border border-gray-700">
+          <table class="min-w-full text-sm">
+            <thead class="bg-gray-900/60">
+              <tr>
+                <th class="px-3 py-2 text-left">Date</th>
+                <th class="px-3 py-2 text-left">Officer</th>
+                <th class="px-3 py-2 text-left">Squad</th>
+                <th class="px-3 py-2 text-left">Notes</th>
+                <th class="px-3 py-2 text-left">Created By</th>
+                <th class="px-3 py-2 text-left">Created At</th>
+                <th class="px-3 py-2 text-left">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for e in entries %}
+              <tr class="border-t border-gray-700">
+                <td class="px-3 py-2">{{ e.date }}</td>
+                <td class="px-3 py-2">
+                  {% set off = officers | selectattr('username', 'equalto',
+                  e.officer) | list %} {% if off and off[0] %}{{ off[0].name
+                  }}{% else %}{{ e.officer }}{% endif %}
+                </td>
+                <td class="px-3 py-2">{{ e.squad or '?' }}</td>
+                <td class="px-3 py-2">{{ e.notes or '' }}</td>
+                <td class="px-3 py-2">{{ e.created_by }}</td>
+                <td class="px-3 py-2">{{ e.created_at }}</td>
+                <td class="px-3 py-2">
+                  <!-- Delete form -->
+                  <form
+                    method="POST"
+                    action="{{ url_for('training_day_delete') }}"
+                    class="inline"
+                  >
+                    <input
+                      type="hidden"
+                      name="_csrf"
+                      value="{{ csrf_token() }}"
+                    />
+                    <input type="hidden" name="id" value="{{ e.id }}" />
+                    <button
+                      type="submit"
+                      class="text-red-400 hover:text-red-300 underline"
+                    >
+                      Delete
+                    </button>
+                  </form>
+                  <!-- Edit form (separate, not nested) -->
+                  <details class="inline-block ml-4">
+                    <summary
+                      class="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                    >
+                      Edit
+                    </summary>
+                    <form
+                      method="POST"
+                      action="{{ url_for('training_day_edit') }}"
+                      class="mt-2 space-y-2"
+                    >
+                      <input
+                        type="hidden"
+                        name="_csrf"
+                        value="{{ csrf_token() }}"
+                      />
+                      <input type="hidden" name="id" value="{{ e.id }}" />
+                      <div>
+                        <label class="block text-xs font-semibold mb-1"
+                          >Date</label
+                        >
+                        <input
+                          type="date"
+                          name="date"
+                          value="{{ e.date }}"
+                          class="form-input bg-gray-900 border border-gray-700 text-gray-100 rounded w-44"
+                        />
+                      </div>
+                      <div>
+                        <label class="block text-xs font-semibold mb-1"
+                          >Notes</label
+                        >
+                        <input
+                          type="text"
+                          name="notes"
+                          value="{{ e.notes or '' }}"
+                          class="form-input bg-gray-900 border border-gray-700 text-gray-100 rounded w-64"
+                        />
+                      </div>
+                      <div>
+                        <button type="submit" class="btn btn--primary btn--sm">
+                          Save
+                        </button>
+                      </div>
+                    </form>
+                  </details>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-sm text-gray-400">No training assignments yet.</p>
+        {% endif %}
+      </section>
+    </div>
+  </body>
+</html>
